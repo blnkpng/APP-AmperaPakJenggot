@@ -1,0 +1,79 @@
+/* APJ HR ABSENSI V121 - exact table sync + panduan solid */
+/* Sidebar Check In/Out: gunakan styling dashboard inventory agar tidak belang.
+   Halaman absensi sekarang juga memuat apj-dashboard.css; aturan ini hanya memastikan
+   sub-menu Dashboard tidak ikut terlihat aktif ketika halaman aktif adalah Check In/Out. */
+.apj-hr-absensi-page #sidebar .nav-second-group[data-menu-group="hr-dashboard"]:not(.open) > .nav-group-toggle{
+  background:rgba(255,255,255,.035);
+  border-color:rgba(148,163,184,.06);
+  color:rgba(203,213,225,.74);
+  box-shadow:none;
+}
+.apj-hr-absensi-page #sidebar .nav-second-group[data-menu-group="hr-dashboard"]:not(.open) > .nav-group-toggle .nav-second-dot{
+  background:rgba(14,165,233,.55);
+}
+.apj-hr-absensi-page #sidebar .nav-second-group[data-menu-group="hr-absensi"].open > .nav-group-toggle,
+.apj-hr-absensi-page #sidebar .nav-item.active{
+  background:linear-gradient(135deg,rgba(37,99,235,.34),rgba(6,182,212,.14));
+  border-color:rgba(125,211,252,.24);
+}
+html[data-theme="light"] .apj-hr-absensi-page #sidebar .nav-second-group[data-menu-group="hr-dashboard"]:not(.open) > .nav-group-toggle{
+  background:rgba(15,23,42,.035)!important;
+  border-color:rgba(15,23,42,.06)!important;
+  color:#475569!important;
+  box-shadow:none!important;
+}
+
+.apj-hr-absensi-page .absensi-wrap{max-width:1500px}.apj-hr-absensi-page .absensi-hero-card{overflow:hidden}.absensi-status-pill{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:12px 16px;border-radius:999px;border:1px solid rgba(148,163,184,.24);background:rgba(15,23,42,.72);color:#cbd5e1;font-size:.82rem;font-weight:950;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}.absensi-status-pill.is-ready{background:rgba(16,185,129,.14);border-color:rgba(16,185,129,.32);color:#bbf7d0}.absensi-status-pill.is-danger{background:rgba(244,63,94,.14);border-color:rgba(244,63,94,.34);color:#fecdd3}.absensi-status-pill.is-warning{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.32);color:#fde68a}.absensi-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(330px,.85fr);gap:18px;align-items:start}.absensi-main-card{padding:20px}.absensi-profile-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px}.panel-eyebrow{margin:0 0 5px;color:var(--muted);font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.12em}.absensi-profile-name{font-size:1.35rem;line-height:1.12;font-weight:950;color:var(--text);letter-spacing:-.03em;margin:0}.absensi-outlet-pill{white-space:nowrap}.absensi-camera-wrap{position:relative;min-height:390px;border-radius:28px;overflow:hidden;border:1px solid var(--border);background:linear-gradient(135deg,rgba(15,23,42,.92),rgba(2,6,23,.96));display:flex;align-items:center;justify-content:center}.absensi-camera-wrap video{width:100%;height:100%;min-height:390px;object-fit:cover;display:block}.absensi-camera-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#94a3b8;font-size:.9rem;font-weight:900;background:linear-gradient(135deg,rgba(15,23,42,.92),rgba(2,6,23,.96))}.absensi-camera-wrap.is-live .absensi-camera-placeholder{display:none}.absensi-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.absensi-big-btn{min-height:58px;border-radius:20px;font-size:1rem;font-weight:950}.absensi-btn-in{background:linear-gradient(135deg,#059669,#10b981)!important;box-shadow:0 14px 30px rgba(16,185,129,.24)!important}.absensi-btn-out{background:linear-gradient(135deg,#2563eb,#06b6d4)!important;box-shadow:0 14px 30px rgba(37,99,235,.22)!important}.absensi-big-btn:disabled{opacity:.48;cursor:not-allowed;filter:grayscale(.25);transform:none!important}.absensi-mini-note{margin-top:12px;padding:12px 14px;border-radius:16px;background:rgba(37,99,235,.10);border:1px solid rgba(37,99,235,.18);color:#bfdbfe;font-size:.82rem;font-weight:800;line-height:1.5}.absensi-side-stack{display:grid;gap:16px}.absensi-location-card{margin:14px 0;padding:16px;border-radius:20px;border:1px solid var(--border);background:rgba(2,6,23,.48)}.absensi-location-main{font-size:1rem;font-weight:950;color:var(--text)}.absensi-location-sub{margin-top:6px;font-size:.82rem;line-height:1.55;color:var(--muted)}.absensi-location-card.is-ready{background:rgba(16,185,129,.10);border-color:rgba(16,185,129,.25)}.absensi-location-card.is-danger{background:rgba(244,63,94,.10);border-color:rgba(244,63,94,.28)}.absensi-location-card.is-warning{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.28)}.absensi-history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}.absensi-history-grid div,.absensi-shift-box div{padding:14px;border-radius:18px;border:1px solid var(--border);background:rgba(15,23,42,.52)}.absensi-history-grid span,.absensi-shift-box span{display:block;font-size:.68rem;font-weight:950;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.absensi-history-grid strong,.absensi-shift-box strong{display:block;margin-top:5px;font-size:1.05rem;color:var(--text)}.absensi-shift-box{display:grid;gap:10px;margin-top:14px}.absensi-countdown{position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,.88);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;flex-direction:column;color:#fff}.absensi-countdown.is-show{display:flex}.absensi-countdown-number{font-size:clamp(5rem,18vw,10rem);font-weight:950;line-height:1;animation:absPulse .85s infinite}.absensi-countdown-text{margin-top:18px;font-size:1rem;font-weight:900;color:#cbd5e1}@keyframes absPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}.absensi-flash{position:fixed;inset:0;z-index:9998;background:#fff;opacity:.68;pointer-events:none;animation:absFlash .32s ease forwards}@keyframes absFlash{to{opacity:0}}
+/* Panduan Absensi: mengikuti style Setup, solid dan tidak transparan */
+#absensiHelpModal:not(.hidden){display:flex!important}.apj-hr-absensi-page #absensiHelpModal .modal-overlay{background:rgba(2,6,23,.82)!important;backdrop-filter:blur(10px)!important}.apj-hr-absensi-page #absensiHelpModal .help-modal-card{position:relative;overflow:hidden;border-radius:30px;border:1px solid rgba(148,163,184,.20);background:linear-gradient(180deg,rgba(15,23,42,.98),rgba(2,6,23,.99))!important;box-shadow:0 30px 90px rgba(0,0,0,.52),inset 0 1px 0 rgba(255,255,255,.06);padding:22px}.apj-hr-absensi-page #absensiHelpModal .help-modal-card:before{content:"";position:absolute;inset:-30% auto auto -15%;width:360px;height:360px;border-radius:999px;background:rgba(37,99,235,.18);filter:blur(60px);pointer-events:none}.apj-hr-absensi-page #absensiHelpModal .help-step{border:1px solid rgba(148,163,184,.16);background:rgba(15,23,42,.72);border-radius:20px;padding:14px}.apj-hr-absensi-page #absensiHelpModal .help-step-number{width:32px;height:32px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;background:linear-gradient(135deg,#2563eb,#06b6d4);color:#fff;font-weight:950;box-shadow:0 10px 24px rgba(37,99,235,.24)}
+html[data-theme="light"] .apj-hr-absensi-page .absensi-status-pill{background:#fff;color:#334155;border-color:rgba(15,23,42,.10);box-shadow:0 12px 28px rgba(15,23,42,.08)}html[data-theme="light"] .apj-hr-absensi-page .absensi-status-pill.is-ready{background:#ecfdf5;color:#047857;border-color:#a7f3d0}html[data-theme="light"] .apj-hr-absensi-page .absensi-status-pill.is-danger{background:#fff1f2;color:#be123c;border-color:#fecdd3}html[data-theme="light"] .apj-hr-absensi-page .absensi-status-pill.is-warning{background:#fffbeb;color:#b45309;border-color:#fde68a}html[data-theme="light"] .apj-hr-absensi-page .absensi-mini-note{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}html[data-theme="light"] .apj-hr-absensi-page .absensi-location-card,html[data-theme="light"] .apj-hr-absensi-page .absensi-history-grid div,html[data-theme="light"] .apj-hr-absensi-page .absensi-shift-box div{background:#fff;border-color:rgba(15,23,42,.10);box-shadow:0 10px 26px rgba(15,23,42,.05)}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .modal-overlay{background:rgba(15,23,42,.42)!important}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-modal-card{background:linear-gradient(180deg,#ffffff,#f8fafc)!important;border-color:rgba(15,23,42,.10);box-shadow:0 30px 80px rgba(15,23,42,.20),inset 0 1px 0 rgba(255,255,255,.9)}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal h3,html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step p:first-child{color:#0f172a!important}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal p,html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step p:last-child{color:#64748b!important}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step{background:#fff;border-color:rgba(15,23,42,.09)}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .inline-flex{background:#eff6ff!important;color:#1d4ed8!important;border-color:#bfdbfe!important}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .bg-amber-500\/10{background:#fffbeb!important;color:#92400e!important;border-color:#fde68a!important}html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .text-amber-100,html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .text-amber-100\/75{color:#92400e!important}
+@media(max-width:1100px){.absensi-layout{grid-template-columns:1fr}.absensi-camera-wrap,.absensi-camera-wrap video{min-height:340px}}@media(max-width:640px){.absensi-profile-row{flex-direction:column}.absensi-action-grid,.absensi-history-grid{grid-template-columns:1fr}.absensi-camera-wrap,.absensi-camera-wrap video{min-height:300px}.absensi-status-pill{width:100%;white-space:normal;text-align:center}.apj-hr-absensi-page #absensiHelpModal .help-modal-card{padding:16px;border-radius:24px}}
+
+
+/* APJ HR Absensi V121 - panduan solid + card terlambat */
+.apj-hr-absensi-page #absensiHelpModal{z-index:99999!important;}
+.apj-hr-absensi-page #absensiHelpModal:not(.hidden){display:flex!important;}
+.apj-hr-absensi-page #absensiHelpModal .modal-overlay{opacity:1!important;background:rgba(2,6,23,.88)!important;backdrop-filter:blur(14px)!important;}
+.apj-hr-absensi-page #absensiHelpModal .help-modal-card{opacity:1!important;transform:scale(1)!important;background:#0f172a!important;background-image:linear-gradient(180deg,#111827,#020617)!important;border:1px solid rgba(148,163,184,.28)!important;box-shadow:0 35px 90px rgba(0,0,0,.68)!important;color:#f8fafc!important;}
+.apj-hr-absensi-page #absensiHelpModal .help-modal-card:before{opacity:.55!important;}
+.apj-hr-absensi-page #absensiHelpModal .help-step{background:#111827!important;border-color:rgba(148,163,184,.20)!important;color:#f8fafc!important;}
+.apj-hr-absensi-page #absensiHelpModal .help-step p:first-child{color:#f8fafc!important;}
+.apj-hr-absensi-page #absensiHelpModal .help-step p:last-child{color:#cbd5e1!important;}
+.apj-hr-absensi-page .absensi-history-late strong{color:#fbbf24!important;}
+.apj-hr-absensi-page .absensi-history-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+.apj-hr-absensi-page .absensi-history-late{grid-column:1 / -1;}
+html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .modal-overlay,
+body[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .modal-overlay{background:rgba(15,23,42,.50)!important;}
+html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-modal-card,
+body[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-modal-card{background:#ffffff!important;background-image:linear-gradient(180deg,#ffffff,#f8fafc)!important;color:#0f172a!important;border-color:rgba(15,23,42,.12)!important;box-shadow:0 35px 80px rgba(15,23,42,.24)!important;}
+html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step,
+body[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step{background:#ffffff!important;border-color:rgba(15,23,42,.10)!important;}
+html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step p:first-child,
+body[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step p:first-child{color:#0f172a!important;}
+html[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step p:last-child,
+body[data-theme="light"] .apj-hr-absensi-page #absensiHelpModal .help-step p:last-child{color:#64748b!important;}
+@media(max-width:640px){.apj-hr-absensi-page .absensi-history-late{grid-column:auto;}}
+
+
+/* V121 - Panduan Absensi solid override tanpa tergantung body class */
+#absensiHelpModal{z-index:999999!important;background:rgba(2,6,23,.78)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+#absensiHelpModal:not(.hidden){display:flex!important;}
+#absensiHelpModal .modal-overlay{opacity:1!important;background:rgba(2,6,23,.88)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+#absensiHelpModal .help-modal-card{opacity:1!important;transform:scale(1)!important;background:#0f172a!important;background-image:linear-gradient(180deg,#111827,#020617)!important;border:1px solid rgba(148,163,184,.30)!important;box-shadow:0 38px 100px rgba(0,0,0,.72)!important;color:#f8fafc!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+#absensiHelpModal .help-step{background:#111827!important;border-color:rgba(148,163,184,.24)!important;color:#f8fafc!important;}
+#absensiHelpModal h3,#absensiHelpModal .help-step p:first-child{color:#f8fafc!important;}
+#absensiHelpModal p,#absensiHelpModal .help-step p:last-child{color:#cbd5e1!important;}
+#absensiHelpModal .bg-amber-500\/10{background:#3b2b09!important;border-color:#f59e0b!important;}
+#absensiHelpModal .text-amber-100,#absensiHelpModal .text-amber-100\/75{color:#fde68a!important;}
+html[data-theme="light"] #absensiHelpModal,body[data-theme="light"] #absensiHelpModal{background:rgba(15,23,42,.38)!important;}
+html[data-theme="light"] #absensiHelpModal .modal-overlay,body[data-theme="light"] #absensiHelpModal .modal-overlay{background:rgba(15,23,42,.48)!important;}
+html[data-theme="light"] #absensiHelpModal .help-modal-card,body[data-theme="light"] #absensiHelpModal .help-modal-card{background:#ffffff!important;background-image:linear-gradient(180deg,#ffffff,#f8fafc)!important;color:#0f172a!important;border-color:rgba(15,23,42,.12)!important;box-shadow:0 38px 90px rgba(15,23,42,.24)!important;}
+html[data-theme="light"] #absensiHelpModal .help-step,body[data-theme="light"] #absensiHelpModal .help-step{background:#ffffff!important;color:#0f172a!important;border-color:rgba(15,23,42,.10)!important;}
+html[data-theme="light"] #absensiHelpModal h3,html[data-theme="light"] #absensiHelpModal .help-step p:first-child,body[data-theme="light"] #absensiHelpModal h3,body[data-theme="light"] #absensiHelpModal .help-step p:first-child{color:#0f172a!important;}
+html[data-theme="light"] #absensiHelpModal p,html[data-theme="light"] #absensiHelpModal .help-step p:last-child,body[data-theme="light"] #absensiHelpModal p,body[data-theme="light"] #absensiHelpModal .help-step p:last-child{color:#64748b!important;}
+/* V126: kartu riwayat bertambah Total Kerja & Total Lembur, semua kartu dibuat sejajar. */
+.apj-hr-absensi-page .absensi-history-late{grid-column:auto!important;}
+
+
+/* V129/V131: mirror kamera depan agar gerakan kiri/kanan natural seperti cermin. */
+.absensi-camera-wrap video{transform:scaleX(-1);}
