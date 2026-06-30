@@ -6,22 +6,6 @@
 (function () {
   'use strict';
 
-  const APJ_GUIDE_VERSION = 'V42';
-  function apjGuideUserKey() {
-    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
-    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
-  }
-  function apjGuideSeenKey(pageKey) {
-    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
-  }
-  function apjHasSeenGuide(pageKey) {
-    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
-  }
-  function apjMarkGuideSeen(pageKey) {
-    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
-  }
-
-
   const CONFIG = window.APJ_CONFIG || {};
   const API_URL = CONFIG.inventoryApiUrl || (CONFIG.apis && CONFIG.apis.inventory) || '';
   const STORAGE = CONFIG.storage || {};
@@ -65,7 +49,7 @@
     }
 
     setTimeout(() => {
-      if (!apjHasSeenGuide('preparasi.html')) openPreparasiHelpModal(true);
+      if (sessionStorage.getItem('APJ_PREPARASI_HELP_SEEN_V100') !== 'true') openPreparasiHelpModal(true);
     }, 450);
 
     await loadPreparasiData();
@@ -814,7 +798,6 @@
     const content = modal ? modal.querySelector('.modal-content') : null;
     if (!modal || !overlay || !content) return;
     if (!autoOpen) closeMobileSidebar();
-    if (autoOpen) apjMarkGuideSeen('preparasi.html');
     modal.classList.remove('hidden');
     void modal.offsetWidth;
     overlay.classList.add('opacity-100');
@@ -828,7 +811,7 @@
     const overlay = modal ? modal.querySelector('.modal-overlay') : null;
     const content = modal ? modal.querySelector('.modal-content') : null;
     if (!modal || !overlay || !content) return;
-    apjMarkGuideSeen('preparasi.html');
+    sessionStorage.setItem('APJ_PREPARASI_HELP_SEEN_V100', 'true');
     overlay.classList.remove('opacity-100');
     overlay.classList.add('opacity-0');
     content.classList.remove('scale-100', 'opacity-100');

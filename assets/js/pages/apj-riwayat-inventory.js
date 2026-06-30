@@ -1,22 +1,6 @@
 /* APJ RIWAYAT INVENTORY V109 */
 (function(){
   'use strict';
-
-  const APJ_GUIDE_VERSION = 'V42';
-  function apjGuideUserKey() {
-    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
-    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
-  }
-  function apjGuideSeenKey(pageKey) {
-    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
-  }
-  function apjHasSeenGuide(pageKey) {
-    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
-  }
-  function apjMarkGuideSeen(pageKey) {
-    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
-  }
-
   const CONFIG = window.APJ_CONFIG || {};
   const API_URL = CONFIG.inventoryApiUrl || (CONFIG.apis && CONFIG.apis.inventory) || 'https://script.google.com/macros/s/AKfycbzisWWG4QzlI2_xB9arSGLAx0zn3Rgcu_Jt9tFXpJZTcXohFXwmE0sDTGCxf-i2OL0k/exec';
   const STORAGE = CONFIG.storage || {};
@@ -27,7 +11,7 @@
   async function initPage(){
     if (localStorage.getItem(K.active) !== 'true' || !getToken()) { window.location.href = CONFIG.loginPage || 'index.html'; return; }
     initUserHeader(); initSidebar(); initEvents(); setDefaultDates(); initModalEsc();
-    setTimeout(function(){ if (!apjHasSeenGuide('riwayat-inventory.html')) openRiwayatHelpModal(true); }, 450);
+    setTimeout(function(){ if (sessionStorage.getItem('APJ_RIWAYAT_HELP_SEEN_V109') !== 'true') openRiwayatHelpModal(true); }, 450);
     await loadRiwayat();
   }
   function initUserHeader(){ const nama=localStorage.getItem(K.name)||localStorage.getItem('APJ_USER_USERNAME')||'Pengguna'; const level=localStorage.getItem(K.level)||'-'; setText('displayNama',nama); setText('displayLevel',level); setText('displayInisial',makeInitial(nama)); }
@@ -106,7 +90,7 @@
   function closeMobileSidebar(){ const s=document.getElementById('sidebar'), b=document.getElementById('sidebarBackdrop'); if(s) s.classList.add('-translate-x-full'); if(b) b.classList.add('hidden'); }
   function initSidebar(){ document.querySelectorAll('#dashboardSidebarMenu [data-menu-toggle]').forEach(btn=>btn.addEventListener('click',function(){ const group=btn.closest('.nav-group'); const isOpen=group && group.classList.contains('open'); if(group){ group.classList.toggle('open',!isOpen); btn.setAttribute('aria-expanded',String(!isOpen)); }})); document.querySelectorAll('#sidebar a').forEach(a=>a.addEventListener('click',closeMobileSidebar)); }
   function showLogoutModal(){ showModal('logoutModal'); } function closeLogoutModal(){ hideModal('logoutModal'); } function executeLogout(){ localStorage.clear(); window.location.href=CONFIG.loginPage||'index.html'; }
-  function openRiwayatHelpModal(auto){ if(auto) apjMarkGuideSeen('riwayat-inventory.html'); showModal('riwayatHelpModal'); } function closeRiwayatHelpModal(){ apjMarkGuideSeen('riwayat-inventory.html'); hideModal('riwayatHelpModal'); }
+  function openRiwayatHelpModal(auto){ if(auto) sessionStorage.setItem('APJ_RIWAYAT_HELP_SEEN_V109','true'); showModal('riwayatHelpModal'); } function closeRiwayatHelpModal(){ hideModal('riwayatHelpModal'); }
   function showModal(id){ const m=document.getElementById(id); if(!m) return; m.classList.remove('hidden'); setTimeout(()=>{m.querySelectorAll('.modal-overlay').forEach(e=>e.classList.remove('opacity-0')); m.querySelectorAll('.modal-content').forEach(e=>{e.classList.remove('opacity-0','scale-95'); e.classList.add('opacity-100','scale-100');});},10); }
   function hideModal(id){ const m=document.getElementById(id); if(!m) return; m.querySelectorAll('.modal-overlay').forEach(e=>e.classList.add('opacity-0')); m.querySelectorAll('.modal-content').forEach(e=>{e.classList.add('opacity-0','scale-95'); e.classList.remove('opacity-100','scale-100');}); setTimeout(()=>m.classList.add('hidden'),160); }
   function initModalEsc(){ document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeRiwayatHelpModal(); closeLogoutModal(); }}); }

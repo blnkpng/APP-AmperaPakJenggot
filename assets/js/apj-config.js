@@ -1,10 +1,10 @@
 /*
-  APJ CONFIG V4.5 - Audit Log, Error Log & Health Check
+  APJ CONFIG V184 - Dashboard Absensi Calendar Event Card
   Satu tempat setting URL API, storage key, halaman, permission, dan action Apps Script.
 */
 window.APJ_CONFIG = window.APJ_CONFIG || {
   appName: 'APJ Central',
-  appVersion: 'APP-V.4.5 / Audit Error Health',
+  appVersion: 'APP V10.50 / Absensi Silent Status Sync Fix V221',
   timezone: 'Asia/Jakarta',
   coreApiUrl: 'https://script.google.com/macros/s/AKfycbwXjexCdYXsygij_WdgA6H26Xp__GCpRbLk1oxpocnvmOvyy8_9G2lVKW_6wr2qV19YkQ/exec',
   inventoryApiUrl: 'https://script.google.com/macros/s/AKfycbzisWWG4QzlI2_xB9arSGLAx0zn3Rgcu_Jt9tFXpJZTcXohFXwmE0sDTGCxf-i2OL0k/exec',

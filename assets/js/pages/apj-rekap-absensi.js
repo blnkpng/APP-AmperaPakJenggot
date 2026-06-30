@@ -2,22 +2,6 @@
 /* APJ HR REKAP ABSENSI V146 */
 (function(){
   'use strict';
-
-  const APJ_GUIDE_VERSION = 'V42';
-  function apjGuideUserKey() {
-    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
-    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
-  }
-  function apjGuideSeenKey(pageKey) {
-    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
-  }
-  function apjHasSeenGuide(pageKey) {
-    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
-  }
-  function apjMarkGuideSeen(pageKey) {
-    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
-  }
-
   var state = { session:null, user:null, isAdmin:false, rows:[], users:[], outlets:[], summary:null, busy:false, exportBusy:false };
   function $(id){ return document.getElementById(id); }
   function cfg(){ return window.APJ_CONFIG || {}; }
@@ -125,8 +109,8 @@
   function executeLogout(){ if(window.APJAuth && APJAuth.logout) APJAuth.logout(); else { localStorage.clear(); sessionStorage.clear(); window.location.href=(cfg().loginPage||'index.html'); } }
   function openMobileSidebar(){ var sidebar=$('sidebar'), backdrop=$('sidebarBackdrop'); if(sidebar) sidebar.classList.remove('-translate-x-full'); if(backdrop) backdrop.classList.remove('hidden'); document.body.style.overflow='hidden'; }
   function closeMobileSidebar(){ var sidebar=$('sidebar'), backdrop=$('sidebarBackdrop'); if(sidebar && window.innerWidth < 1024) sidebar.classList.add('-translate-x-full'); if(backdrop) backdrop.classList.add('hidden'); document.body.style.overflow=''; }
-  function openAbsensiHelpModal(autoOpen){ if (autoOpen) apjMarkGuideSeen('rekap-absensi.html'); openModal('absensiHelpModal'); }
-  function closeAbsensiHelpModal(){ apjMarkGuideSeen('rekap-absensi.html'); closeModal('absensiHelpModal'); }
+  function openAbsensiHelpModal(){ openModal('absensiHelpModal'); sessionStorage.setItem('APJ_REKAP_ABSENSI_HELP_SEEN_V135','true'); }
+  function closeAbsensiHelpModal(){ closeModal('absensiHelpModal'); }
   function initSidebar(){
     document.querySelectorAll('[data-menu-toggle]').forEach(function(btn){ if(btn.dataset.apjBound==='Y') return; btn.dataset.apjBound='Y'; btn.addEventListener('click',function(){ var group=btn.closest('.nav-group'); if(!group) return; group.classList.toggle('open'); btn.setAttribute('aria-expanded',group.classList.contains('open')?'true':'false'); }); });
     document.querySelectorAll('#sidebar a').forEach(function(a){ a.addEventListener('click', closeMobileSidebar); });

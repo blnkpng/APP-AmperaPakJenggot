@@ -2,22 +2,6 @@
 (function(){
   'use strict';
 
-  const APJ_GUIDE_VERSION = 'V42';
-  function apjGuideUserKey() {
-    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
-    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
-  }
-  function apjGuideSeenKey(pageKey) {
-    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
-  }
-  function apjHasSeenGuide(pageKey) {
-    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
-  }
-  function apjMarkGuideSeen(pageKey) {
-    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
-  }
-
-
   const CFG = window.APJ_CONFIG || {};
   const API_URL = CFG.inventoryApiUrl || (CFG.apis && CFG.apis.inventory) || '';
   const SESSION_KEY = 'APJ_SESSION_TOKEN';
@@ -45,7 +29,8 @@
     bindSidebar();
     setToday();
     loadProdukOutlet();
-    if (!apjHasSeenGuide('produk-outlet.html')) setTimeout(() => openProdukHelpModal(true), 550);
+    const seen = sessionStorage.getItem('APJ_PRODUK_OUTLET_HELP_SEEN_V81');
+    if (!seen) setTimeout(() => openProdukHelpModal(true), 550);
   }
 
   function initIdentity(){
@@ -977,11 +962,11 @@
   function openProdukHelpModal(autoOpen){
     const modal = document.getElementById('produkHelpModal');
     if (!modal) return;
-    if (autoOpen) apjMarkGuideSeen('produk-outlet.html');
+    if (autoOpen) sessionStorage.setItem('APJ_PRODUK_OUTLET_HELP_SEEN_V81','1');
     openModal('produkHelpModal');
   }
 
-  function closeProdukHelpModal(){ apjMarkGuideSeen('produk-outlet.html'); closeModal('produkHelpModal'); }
+  function closeProdukHelpModal(){ closeModal('produkHelpModal'); }
 
   function showToast(message, type){
     const toast = document.getElementById('customToast');

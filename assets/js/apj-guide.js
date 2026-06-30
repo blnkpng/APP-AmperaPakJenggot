@@ -1,4 +1,4 @@
-/* APJ GUIDE V4.2 - modal panduan per halaman, auto once per user/page */
+/* APJ GUIDE V18 - modal panduan per halaman */
 (function () {
   'use strict';
 
@@ -52,36 +52,6 @@
 
   function currentPage() { return (location.pathname.split('/').pop() || 'dashboard.html').toLowerCase(); }
 
-  const GUIDE_VERSION = 'V42';
-  function userKey() {
-    let raw = 'guest';
-    try {
-      const session = window.APJAuth && window.APJAuth.getSession ? window.APJAuth.getSession() : {};
-      raw = session.username || session.userId || session.name || localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
-    } catch (err) {}
-    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
-  }
-
-  function seenKey(pageKey) {
-    return 'APJ_GUIDE_SEEN_' + GUIDE_VERSION + '::' + userKey() + '::' + String(pageKey || currentPage()).toLowerCase();
-  }
-
-  function hasSeen(pageKey) {
-    try { return localStorage.getItem(seenKey(pageKey)) === 'true'; } catch (err) { return false; }
-  }
-
-  function markSeen(pageKey) {
-    try { localStorage.setItem(seenKey(pageKey), 'true'); } catch (err) {}
-  }
-
-  function openAuto(pageKey) {
-    if (hasSeen(pageKey)) return false;
-    markSeen(pageKey);
-    open();
-    return true;
-  }
-
-
   function getGuide() {
     return window.APJ_PAGE_GUIDE || DEFAULT_GUIDES[currentPage()] || {
       title: 'Panduan APJ',
@@ -114,12 +84,11 @@
   }
 
   function close() {
-    markSeen(currentPage());
     const modal = document.getElementById('apjGuideModal');
     if (modal) modal.classList.remove('apj-show');
   }
 
   function init() { ensureModal(); }
 
-  window.APJGuide = { init: init, open: open, openAuto: openAuto, close: close, getGuide: getGuide, hasSeen: hasSeen, markSeen: markSeen, seenKey: seenKey };
+  window.APJGuide = { init: init, open: open, close: close, getGuide: getGuide };
 })();

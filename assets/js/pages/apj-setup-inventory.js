@@ -5,22 +5,6 @@
 (function(){
   'use strict';
 
-  const APJ_GUIDE_VERSION = 'V42';
-  function apjGuideUserKey() {
-    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
-    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
-  }
-  function apjGuideSeenKey(pageKey) {
-    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
-  }
-  function apjHasSeenGuide(pageKey) {
-    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
-  }
-  function apjMarkGuideSeen(pageKey) {
-    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
-  }
-
-
   const CONFIG = window.APJ_CONFIG || {};
   const API_URL = CONFIG.inventoryApiUrl || (CONFIG.apis && CONFIG.apis.inventory) || 'https://script.google.com/macros/s/AKfycbzisWWG4QzlI2_xB9arSGLAx0zn3Rgcu_Jt9tFXpJZTcXohFXwmE0sDTGCxf-i2OL0k/exec';
   const CORE_API_URL = CONFIG.coreApiUrl || (CONFIG.apis && CONFIG.apis.core) || '';
@@ -66,7 +50,7 @@
     initEvents();
     initModalCloseOnEsc();
     await loadSetupData();
-    setTimeout(function(){ if (!apjHasSeenGuide('setup-inventory.html')) openSetupHelpModal(true); }, 450);
+    setTimeout(function(){ if (sessionStorage.getItem('APJ_SETUP_HELP_SEEN_V107') !== 'true') openSetupHelpModal(true); }, 450);
   }
 
   function initUserHeader(){
@@ -669,8 +653,8 @@
   }
   function openModal(id){ const modal = document.getElementById(id); const overlay = modal ? modal.querySelector('.modal-overlay') : null; const content = modal ? modal.querySelector('.modal-content') : null; if (!modal || !overlay || !content) return; modal.classList.remove('hidden'); void modal.offsetWidth; overlay.classList.add('opacity-100'); overlay.classList.remove('opacity-0'); content.classList.add('scale-100','opacity-100'); content.classList.remove('scale-95','opacity-0'); }
   function closeModal(id){ const modal = document.getElementById(id); const overlay = modal ? modal.querySelector('.modal-overlay') : null; const content = modal ? modal.querySelector('.modal-content') : null; if (!modal || !overlay || !content) return; overlay.classList.remove('opacity-100'); overlay.classList.add('opacity-0'); content.classList.remove('scale-100','opacity-100'); content.classList.add('scale-95','opacity-0'); setTimeout(() => modal.classList.add('hidden'), 230); }
-  function openSetupHelpModal(autoOpen){ if (autoOpen) apjMarkGuideSeen('setup-inventory.html'); openModal('setupHelpModal'); }
-  function closeSetupHelpModal(){ apjMarkGuideSeen('setup-inventory.html'); closeModal('setupHelpModal'); }
+  function openSetupHelpModal(){ openModal('setupHelpModal'); }
+  function closeSetupHelpModal(){ sessionStorage.setItem('APJ_SETUP_HELP_SEEN_V107','true'); closeModal('setupHelpModal'); }
   function closeSetupFormModal(){ closeModal('setupFormModal'); }
   function showLogoutModal(){ openModal('logoutModal'); }
   function closeLogoutModal(){ closeModal('logoutModal'); }
