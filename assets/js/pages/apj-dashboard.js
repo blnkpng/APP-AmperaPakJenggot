@@ -1,4 +1,4 @@
-/* APJ Dashboard V219 - Dashboard Utama Silent Refresh No Loading */
+/* APJ Dashboard V221 - Auto National Holiday Calendar */
 (function () {
   'use strict';
 
@@ -38,6 +38,9 @@
   let absensiCalendarSelectedDay = null;
   let absensiCalendarViewDate = new Date();
   let absensiCalendarCache = null;
+  let absensiCalendarRemoteTimer = null;
+  let absensiCalendarRemoteLoadingKey = '';
+  let absensiCalendarRemoteLoadedKey = '';
   let homeBirthdayContext = { isBirthday:false, name:'', rows:[], calendar:null, wishes:[], sentWishes:[], birthdayDirectory:[] };
   let homeBackendLoaded = false;
   let homeLatestTodayItems = [];
@@ -246,7 +249,7 @@
       content.classList.add('hidden');
     }
     try {
-      const res = await absensiCall(absensiActionName('dashboard', 'getDashboardAbsensiV170'), userPayload({ tanggal: dateISO(new Date()) }));
+      const res = await absensiCall(absensiActionName('dashboard', 'getDashboardAbsensiV170'), userPayload({ tanggal: dateISOLocal(new Date()) }));
       if (res && res.success === false) throw new Error(res.pesan || 'Dashboard Absensi gagal dimuat.');
       renderAbsensiDashboardV168(normalizeAbsensiDashboardData(res || {}));
       if (isManualRefresh) showToast('Dashboard Absensi sudah disegarkan.', 'success');
@@ -459,15 +462,17 @@
     const first = new Date(year, month, 1);
     const start = (first.getDay() + 6) % 7;
     const days = new Date(year, month + 1, 0).getDate();
+    calendar = normalizeCalendarForView(calendar || {}, view);
     absensiCalendarCache = calendar || {};
     if (!absensiCalendarSelectedDay || absensiCalendarSelectedDay > days) absensiCalendarSelectedDay = isCurrentMonth ? today : 1;
     setText('calendarMonth', view.toLocaleDateString('id-ID', { month:'long', year:'numeric' }));
     setText('calendarTitle', 'Kalender');
     setText('calendarModePill', isCurrentMonth ? 'Hari ini' : 'Pilih bulan');
     ensureAbsensiCalendarControls(view);
-    const red = indexCalendarRows(calendar.tanggalMerah, view);
-    const order = indexCalendarRows(calendar.pesanan, view);
-    const birth = indexCalendarRows(calendar.ulangTahun, view, { recurringMonth: true });
+    const sourceKey = calendar.__viewKey || calendar.viewKey || calendar.monthKey || '';
+    const red = indexCalendarRows(calendar.tanggalMerah, view, { sourceKey: sourceKey, requireMonth: true });
+    const order = indexCalendarRows(calendar.pesanan, view, { sourceKey: sourceKey, requireMonth: true });
+    const birth = indexCalendarRows(calendar.ulangTahun, view, { recurringMonth: true, sourceKey: sourceKey, requireMonth: true });
     const labels = ['S','S','R','K','J','S','M'];
     let cells = labels.map(function (d) { return '<div class="calendar-cell calendar-label">' + d + '</div>'; }).join('');
     for (let i = 0; i < start; i++) cells += '<div class="calendar-cell muted"></div>';
@@ -522,9 +527,8 @@
         if (action === 'prev') moveCalendarMonth(-1);
         else if (action === 'next') moveCalendarMonth(1);
         else if (action === 'today') {
-          absensiCalendarViewDate = new Date();
-          absensiCalendarSelectedDay = new Date().getDate();
-          renderAbsensiCalendarV168(absensiCalendarCache || {});
+          const todayDate = new Date();
+          setAbsensiCalendarView(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate(), true);
         }
       });
     }
@@ -537,16 +541,15 @@
         return '<option value="' + i + '">' + esc(label) + '</option>';
       }).join('');
       monthSelect.addEventListener('change', function () {
-        absensiCalendarViewDate = new Date(Number(yearSelect && yearSelect.value || view.getFullYear()), Number(monthSelect.value || 0), 1);
-        absensiCalendarSelectedDay = 1;
-        renderAbsensiCalendarV168(absensiCalendarCache || {});
+        setAbsensiCalendarView(Number(yearSelect && yearSelect.value || view.getFullYear()), Number(monthSelect.value || 0), 1, true);
       });
     }
     if (yearSelect) {
       const currentYear = new Date().getFullYear();
-      const minYear = currentYear - 2;
-      const maxYear = currentYear + 3;
-      const desired = String(view.getFullYear());
+      const viewYear = Number(view.getFullYear() || currentYear);
+      const minYear = Math.min(2020, currentYear - 10, viewYear - 5);
+      const maxYear = Math.max(currentYear + 10, viewYear + 5);
+      const desired = String(viewYear);
       const currentOptions = Array.from(yearSelect.options || []).map(function (o) { return o.value; }).join('|');
       const neededOptions = Array.from({ length: maxYear - minYear + 1 }).map(function (_, i) { return String(minYear + i); }).join('|');
       if (currentOptions !== neededOptions) {
@@ -558,9 +561,7 @@
       if (!yearSelect.__apjCalendarBound) {
         yearSelect.__apjCalendarBound = true;
         yearSelect.addEventListener('change', function () {
-          absensiCalendarViewDate = new Date(Number(yearSelect.value || view.getFullYear()), Number(monthSelect && monthSelect.value || view.getMonth()), 1);
-          absensiCalendarSelectedDay = 1;
-          renderAbsensiCalendarV168(absensiCalendarCache || {});
+          setAbsensiCalendarView(Number(yearSelect.value || view.getFullYear()), Number(monthSelect && monthSelect.value || view.getMonth()), 1, true);
         });
       }
       if (Array.from(yearSelect.options || []).some(function (o) { return o.value === desired; })) yearSelect.value = desired;
@@ -570,9 +571,78 @@
 
   function moveCalendarMonth(delta) {
     const base = absensiCalendarViewDate || new Date();
-    absensiCalendarViewDate = new Date(base.getFullYear(), base.getMonth() + Number(delta || 0), 1);
-    absensiCalendarSelectedDay = 1;
-    renderAbsensiCalendarV168(absensiCalendarCache || {});
+    const next = new Date(base.getFullYear(), base.getMonth() + Number(delta || 0), 1);
+    setAbsensiCalendarView(next.getFullYear(), next.getMonth(), 1, true);
+  }
+
+  function setAbsensiCalendarView(year, month, day, shouldLoadRemote) {
+    absensiCalendarViewDate = new Date(Number(year), Number(month), Number(day || 1));
+    absensiCalendarSelectedDay = Number(day || 1);
+    const currentCalendar = getCalendarForView(absensiCalendarCache || {}, absensiCalendarViewDate);
+    renderAbsensiCalendarV168(currentCalendar);
+    if (shouldLoadRemote) scheduleAbsensiCalendarMonthSync();
+  }
+
+  function getCalendarForView(calendar, viewDate) {
+    const key = calendarViewKey(viewDate || new Date());
+    const sourceKey = calendar && (calendar.__viewKey || calendar.viewKey || calendar.monthKey);
+    if (sourceKey && sourceKey !== key) return { tanggalMerah: [], pesanan: [], ulangTahun: [], __viewKey: key, __loading: true };
+    const copy = normalizeCalendarForView(calendar || {}, viewDate || new Date());
+    copy.__viewKey = key;
+    return copy;
+  }
+
+  function scheduleAbsensiCalendarMonthSync() {
+    if (PAGE_MODE !== 'central' && PAGE_MODE !== 'absensi') return;
+    if (absensiCalendarRemoteTimer) clearTimeout(absensiCalendarRemoteTimer);
+    absensiCalendarRemoteTimer = setTimeout(loadAbsensiCalendarMonthForView, 180);
+  }
+
+  async function loadAbsensiCalendarMonthForView() {
+    const view = absensiCalendarViewDate || new Date();
+    const key = calendarViewKey(view);
+    if (!key || absensiCalendarRemoteLoadingKey === key) return;
+    absensiCalendarRemoteLoadingKey = key;
+    try {
+      const payloadDate = dateISOLocal(new Date(view.getFullYear(), view.getMonth(), 1));
+      const res = await absensiCall(absensiActionName('dashboard', 'getDashboardAbsensiV170'), userPayload({ tanggal: payloadDate, calendarOnly: true }));
+      if (res && res.success === false) throw new Error(res.pesan || 'Kalender gagal dimuat.');
+      const normalized = normalizeAbsensiDashboardData(res || {});
+      const calendar = normalizeCalendarForView(normalized.calendar || {}, view);
+      calendar.__viewKey = key;
+      absensiCalendarRemoteLoadedKey = key;
+      renderAbsensiCalendarV168(calendar);
+    } catch (error) {
+      if (PAGE_MODE === 'central') {
+        const fallback = normalizeCalendarForView(buildCentralFallbackCalendar(getUserDataObject(), false, ''), view);
+        fallback.__viewKey = key;
+        renderAbsensiCalendarV168(fallback);
+      }
+    } finally {
+      absensiCalendarRemoteLoadingKey = '';
+    }
+  }
+
+  function calendarViewKey(date) {
+    date = date || new Date();
+    return String(date.getFullYear()) + '-' + String(date.getMonth() + 1).padStart(2, '0');
+  }
+
+  function normalizeCalendarForView(calendar, viewDate) {
+    const key = (calendar && (calendar.__viewKey || calendar.viewKey || calendar.monthKey)) || calendarViewKey(viewDate || new Date());
+    const out = {
+      tanggalMerah: arr((calendar || {}).tanggalMerah).map(function (r) { return tagCalendarRowSource(r, key); }),
+      pesanan: arr((calendar || {}).pesanan).map(function (r) { return tagCalendarRowSource(r, key); }),
+      ulangTahun: arr((calendar || {}).ulangTahun).map(function (r) { return tagCalendarRowSource(r, key); }),
+      __viewKey: key
+    };
+    return out;
+  }
+
+  function tagCalendarRowSource(row, key) {
+    const out = Object.assign({}, row || {});
+    if (!out.__viewKey) out.__viewKey = key || '';
+    return out;
   }
 
   function lockAbsensiCalendarCardHeight(card) {
@@ -616,9 +686,11 @@
     const selectedDay = day || (view.getFullYear() === now.getFullYear() && view.getMonth() === now.getMonth() ? now.getDate() : 1);
     const dt = new Date(view.getFullYear(), view.getMonth(), selectedDay);
     const isToday = dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && selectedDay === now.getDate();
-    const red = indexCalendarRows(calendar.tanggalMerah, view);
-    const order = indexCalendarRows(calendar.pesanan, view);
-    const birth = indexCalendarRows(calendar.ulangTahun, view, { recurringMonth: true });
+    calendar = normalizeCalendarForView(calendar || {}, view);
+    const sourceKey = calendar.__viewKey || calendar.viewKey || calendar.monthKey || '';
+    const red = indexCalendarRows(calendar.tanggalMerah, view, { sourceKey: sourceKey, requireMonth: true });
+    const order = indexCalendarRows(calendar.pesanan, view, { sourceKey: sourceKey, requireMonth: true });
+    const birth = indexCalendarRows(calendar.ulangTahun, view, { recurringMonth: true, sourceKey: sourceKey, requireMonth: true });
     const events = [];
     if (isToday) events.push({ type:'Hari ini', label: dt.toLocaleDateString('id-ID', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }) });
     const redRows = red[selectedDay] || (dt.getDay() === 0 ? [{ label:'Minggu' }] : []);
@@ -663,18 +735,29 @@
 
   function calendarRowMatchesView(row, viewDate, options) {
     if (!row) return false;
+    options = options || {};
     const view = viewDate || new Date();
     const parsed = getCalendarRowParsedDate(row);
     const monthValue = row.month || row.bulan || row.MONTH || row.BULAN || row.tanggalBulan || row.TANGGAL_BULAN;
+    const rowYear = row.year || row.tahun || row.YEAR || row.TAHUN;
     if (parsed) {
       if (parsed.getMonth() !== view.getMonth()) return false;
       const raw = String(rawCalendarDateValue(row) || '');
-      const hasExplicitYear = /\d{4}/.test(raw) || row.year || row.tahun || row.YEAR || row.TAHUN;
+      const hasExplicitYear = /\d{4}/.test(raw) || rowYear;
       if (hasExplicitYear && !options.recurringMonth && parsed.getFullYear() !== view.getFullYear()) return false;
       return true;
     }
     const m = Number(monthValue || 0);
-    if (m && m >= 1 && m <= 12) return (m - 1) === view.getMonth();
+    if (m && m >= 1 && m <= 12) {
+      if ((m - 1) !== view.getMonth()) return false;
+      const y = Number(rowYear || 0);
+      if (y && !options.recurringMonth && y !== view.getFullYear()) return false;
+      return true;
+    }
+    if (options.requireMonth) {
+      const sourceKey = options.sourceKey || row.__viewKey || row.viewKey || row.monthKey || '';
+      return !!sourceKey && sourceKey === calendarViewKey(view);
+    }
     return true;
   }
 
@@ -799,7 +882,7 @@
 
   async function loadCentralHomeBackendData(isManualRefresh, birthdayToday, name) {
     try {
-      const res = await coreCall(coreActionName('dashboardUtama', 'getDashboardUtamaDataV202'), userPayload({ tanggal: dateISO(new Date()) }));
+      const res = await coreCall(coreActionName('dashboardUtama', 'getDashboardUtamaDataV202'), userPayload({ tanggal: dateISOLocal(new Date()) }));
       if (!res || res.success === false) throw new Error((res && (res.message || res.pesan)) || 'Dashboard Utama belum aktif.');
       homeBackendLoaded = true;
       homeLatestTodayItems = arr(res.todayItems || res.today || []);
@@ -855,10 +938,12 @@
 
   async function loadCentralHomeCalendarData(fallbackCalendar, isManualRefresh, birthdayToday, name) {
     try {
-      const res = await absensiCall(absensiActionName('dashboard', 'getDashboardAbsensiV170'), userPayload({ tanggal: dateISO(new Date()) }));
+      const view = absensiCalendarViewDate || new Date();
+      const res = await absensiCall(absensiActionName('dashboard', 'getDashboardAbsensiV170'), userPayload({ tanggal: dateISOLocal(new Date(view.getFullYear(), view.getMonth(), 1)), calendarOnly: true }));
       if (res && res.success === false) throw new Error(res.pesan || 'Kalender umum gagal dimuat.');
       const normalized = normalizeAbsensiDashboardData(res || {});
       const mergedCalendar = mergeCentralCalendar(normalized.calendar || {}, fallbackCalendar || {});
+      mergedCalendar.__viewKey = calendarViewKey(view);
       renderAbsensiCalendarV168(mergedCalendar);
       renderHomeBirthdayCards(!!birthdayToday, name, mergedCalendar);
       scheduleHomeBirthdayNotice(homeBirthdayContext.isBirthday, name, mergedCalendar);
@@ -1654,9 +1739,10 @@
   }
 
   function buildCentralFallbackCalendar(user, isBirthday, name) {
-    const today = new Date().getDate();
-    const birthdayRows = isBirthday ? [{ day: today, nama: name || 'Karyawan APJ' }] : [];
-    return { tanggalMerah: [], pesanan: [], ulangTahun: birthdayRows };
+    const now = new Date();
+    const today = now.getDate();
+    const birthdayRows = isBirthday ? [{ day: today, month: now.getMonth() + 1, year: now.getFullYear(), tanggal: dateISOLocal(now), nama: name || 'Karyawan APJ' }] : [];
+    return { tanggalMerah: [], pesanan: [], ulangTahun: birthdayRows, __viewKey: calendarViewKey(now) };
   }
 
   async function loadDashboardData(isManualRefresh) {
@@ -2169,7 +2255,8 @@
   function unique(arr) { const seen = {}; return (arr || []).map(function (x) { return String(x || '').trim(); }).filter(function (x) { if (!x || seen[x]) return false; seen[x] = true; return true; }); }
   function formatNumber(value) { const n = Number(value || 0); if (!Number.isFinite(n)) return String(value || 0); return new Intl.NumberFormat('id-ID').format(n); }
   function formatDateHuman(date) { return date.toLocaleDateString('id-ID', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }); }
-  function dateISO(value) { if (!value) return ''; if (Object.prototype.toString.call(value) === '[object Date]') return value.toISOString().slice(0, 10); const s = String(value); const iso = s.match(/\d{4}-\d{2}-\d{2}/); if (iso) return iso[0]; const dmy = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/); if (dmy) return String(dmy[3]).padStart(4, '20') + '-' + String(dmy[2]).padStart(2, '0') + '-' + String(dmy[1]).padStart(2, '0'); return ''; }
+  function dateISO(value) { if (!value) return ''; if (Object.prototype.toString.call(value) === '[object Date]') return dateISOLocal(value); const s = String(value); const iso = s.match(/\d{4}-\d{2}-\d{2}/); if (iso) return iso[0]; const dmy = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/); if (dmy) return String(dmy[3]).padStart(4, '20') + '-' + String(dmy[2]).padStart(2, '0') + '-' + String(dmy[1]).padStart(2, '0'); return ''; }
+  function dateISOLocal(value) { const d = (Object.prototype.toString.call(value) === '[object Date]') ? value : new Date(value); if (!d || isNaN(d.getTime())) return ''; return String(d.getFullYear()) + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function emptyState(text) { return '<div class="soft-row"><p class="row-sub">' + esc(text) + '</p></div>'; }
   function toneFromJenis(jenis) { const j = String(jenis || '').toLowerCase(); if (j.includes('input')) return 'emerald'; if (j.includes('output') || j.includes('terjual')) return 'rose'; if (j.includes('preparasi')) return 'amber'; if (j.includes('produksi')) return 'amber'; if (j.includes('transfer')) return 'violet'; if (j.includes('opname')) return 'blue'; return 'slate'; }
   function timeFromText(value) { const m = String(value || '').match(/\b(\d{1,2}:\d{2})\b/); return m ? m[1] : ''; }
