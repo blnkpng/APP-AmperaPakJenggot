@@ -5,6 +5,22 @@
 (function(){
   'use strict';
 
+  const APJ_GUIDE_VERSION = 'V42';
+  function apjGuideUserKey() {
+    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
+    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
+  }
+  function apjGuideSeenKey(pageKey) {
+    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
+  }
+  function apjHasSeenGuide(pageKey) {
+    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
+  }
+  function apjMarkGuideSeen(pageKey) {
+    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
+  }
+
+
   const CONFIG = window.APJ_CONFIG || {};
   const API_URL = CONFIG.inventoryApiUrl || (CONFIG.apis && CONFIG.apis.inventory) || 'https://script.google.com/macros/s/AKfycbzisWWG4QzlI2_xB9arSGLAx0zn3Rgcu_Jt9tFXpJZTcXohFXwmE0sDTGCxf-i2OL0k/exec';
   const CORE_API_URL = CONFIG.coreApiUrl || (CONFIG.apis && CONFIG.apis.core) || '';
@@ -50,7 +66,7 @@
     initEvents();
     initModalCloseOnEsc();
     await loadSetupData();
-    setTimeout(function(){ if (sessionStorage.getItem('APJ_SETUP_HELP_SEEN_V107') !== 'true') openSetupHelpModal(true); }, 450);
+    setTimeout(function(){ if (!apjHasSeenGuide('setup-inventory.html')) openSetupHelpModal(true); }, 450);
   }
 
   function initUserHeader(){
@@ -72,9 +88,9 @@
     const btnRefresh = document.getElementById('btnRefreshSetup');
     if (btnRefresh) btnRefresh.addEventListener('click', loadSetupData);
     const btnOpenAdd = document.getElementById('btnOpenAdd');
-    if (btnOpenAdd) btnOpenAdd.addEventListener('click', function(){ openForm(STATE.activeTab); });
+    if (btnOpenAdd) btnOpenAdd.addEventListener('click', function(){ openAddForm(STATE.activeTab); });
     const btnTambahTab = document.getElementById('btnTambahTab');
-    if (btnTambahTab) btnTambahTab.addEventListener('click', function(){ openForm(STATE.activeTab); });
+    if (btnTambahTab) btnTambahTab.addEventListener('click', function(){ openAddForm(STATE.activeTab); });
   }
 
   async function loadSetupData(){
@@ -233,16 +249,29 @@
       '</div></td>';
   }
 
-  function openForm(type, id){
-    STATE.editing = { type: type || STATE.activeTab, id: id || '' };
+  function openAddForm(type){
+    openForm(type || STATE.activeTab, '', true);
+  }
+
+  function openForm(type, id, forceAdd){
+    const formType = type || STATE.activeTab;
+    const cleanId = String(id || '').trim();
+    const isEdit = !forceAdd && cleanId !== '';
+    STATE.editing = { type: formType, id: isEdit ? cleanId : '', mode: isEdit ? 'edit' : 'add' };
     STATE.deletedRecipeDetails = [];
     const modal = document.getElementById('setupFormModal');
     const form = document.getElementById('setupForm');
     if (!modal || !form) return;
-    if (STATE.editing.type === 'kategori') renderKategoriForm(form, findKategori(id));
-    else if (STATE.editing.type === 'item') renderItemForm(form, findItem(id));
-    else if (STATE.editing.type === 'resep') renderResepForm(form, findResep(id));
-    else renderPreparasiForm(form, findPreparasi(id));
+    // APP-V.4.5 FIX4: setiap buka Tambah wajib mulai dari form kosong.
+    // Ini mencegah hidden ID / field edit lama ikut terkirim dan menimpa item sebelumnya.
+    form.onsubmit = null;
+    form.innerHTML = '';
+    form.dataset.mode = STATE.editing.mode;
+    form.dataset.editId = STATE.editing.id;
+    if (formType === 'kategori') renderKategoriForm(form, isEdit ? findKategori(cleanId) : {});
+    else if (formType === 'item') renderItemForm(form, isEdit ? findItem(cleanId) : {});
+    else if (formType === 'resep') renderResepForm(form, isEdit ? findResep(cleanId) : {});
+    else renderPreparasiForm(form, isEdit ? findPreparasi(cleanId) : {});
     openModal('setupFormModal');
   }
 
@@ -250,6 +279,7 @@
     data = data || {};
     setModalText(field(data,'ID Kategori') ? 'Edit Kategori' : 'Tambah Kategori', 'Kategori', 'Kelompok stok yang dipakai di semua modul.');
     form.innerHTML = '<div class="form-grid">'+
+      hiddenInput('_mode', field(data,'ID Kategori') ? 'edit' : 'add')+
       hiddenInput('idKategori', field(data,'ID Kategori'))+
       fieldHtml('Nama Kategori','namaKategori', field(data,'Nama Kategori'), 'text', 'Contoh: Bahan Utama', true)+
       selectHtml('Tipe Stok','tipeStok', field(data,'Tipe Stok') || 'STOK_GUDANG', ['STOK_GUDANG','PRODUKSI','OUTLET','OPERASIONAL'])+
@@ -269,7 +299,8 @@
     const initialKategori = field(data,'Kategori') || (kategoriOptions[0] ? kategoriOptions[0].value : '');
     const urutanValue = field(data,'Urutan') || (!isEdit ? getNextItemUrutan(initialKategori) : '');
     form.innerHTML = '<div class="form-grid three">'+
-      hiddenInput('idItem', field(data,'ID Item'))+
+      hiddenInput('_mode', isEdit ? 'edit' : 'add')+
+      hiddenInput('idItem', isEdit ? field(data,'ID Item') : '')+
       selectObjectHtml('Kategori','kategori', initialKategori, kategoriOptions, true)+
       fieldHtml('Nama Item','namaItem', field(data,'Nama Item'), 'text', 'Contoh: Ayam Goreng', true)+
       fieldHtml('Kode Lama','kodeLama', field(data,'Kode Lama'), 'text', 'Opsional')+
@@ -299,7 +330,8 @@
     const itemOptions = STATE.items.filter(isActive).map(i => ({value: itemId(i), label: field(i,'Nama Item')+' — '+itemId(i)}));
     const details = idResep ? getRecipeDetails(idResep) : [];
     form.innerHTML = '<div class="form-grid three">'+
-      hiddenInput('idResep', field(data,'ID Resep'))+
+      hiddenInput('_mode', idResep ? 'edit' : 'add')+
+      hiddenInput('idResep', idResep ? field(data,'ID Resep') : '')+
       selectObjectHtml('Item Hasil','idItemHasil', field(data,'ID Item Hasil'), itemOptions, true)+
       fieldHtml('Qty Hasil Standar','qtyHasilStandar', field(data,'Qty Hasil Standar') || 1, 'number', '1', true)+
       fieldHtml('Versi','versi', field(data,'Versi') || 'v1', 'text', 'v1')+
@@ -322,6 +354,7 @@
     const itemOptions = STATE.items.filter(isActive).map(i => ({value: itemId(i), label: field(i,'Nama Item')+' — '+itemId(i)}));
     const details = idPrep ? getPreparasiDetails(idPrep) : [];
     form.innerHTML = '<div class="form-grid three">'+
+      hiddenInput('_mode', idPrep ? 'edit' : 'add')+
       hiddenInput('idResepPreparasi', idPrep)+
       selectObjectHtml('Item Hasil Preparasi','idItemHasil', field(data,'ID Item Hasil'), itemOptions, true)+
       fieldHtml('Qty Hasil','qtyHasil', field(data,'Qty Hasil') || 1, 'number', '1', true)+
@@ -398,8 +431,10 @@
   async function saveItemForm(e){
     e.preventDefault();
     const f = e.currentTarget;
+    const mode = val(f,'_mode') || (val(f,'idItem') ? 'edit' : 'add');
     await submitMaster('saveItemInventory', {
-      idItem: val(f,'idItem'), kategori: val(f,'kategori'), namaItem: val(f,'namaItem'), kodeLama: val(f,'kodeLama'), satuanBeli: val(f,'satuanBeli'), satuanStok: val(f,'satuanStok'), satuanProduksi: val(f,'satuanProduksi'), tipeItem: val(f,'tipeItem'), parent: val(f,'parent'), stokMinimum: val(f,'stokMinimum'), tampilInput: val(f,'tampilInput'), bisaOutput: val(f,'bisaOutput'), bisaPreparasi: val(f,'bisaPreparasi'), bisaProduksi: val(f,'bisaProduksi'), bisaTransferProduk: val(f,'bisaTransferProduk'), aktif: val(f,'aktif'), urutan: val(f,'urutan'), keterangan: val(f,'keterangan')
+      _mode: mode, mode: mode,
+      idItem: mode === 'add' ? '' : val(f,'idItem'), kategori: val(f,'kategori'), namaItem: val(f,'namaItem'), kodeLama: val(f,'kodeLama'), satuanBeli: val(f,'satuanBeli'), satuanStok: val(f,'satuanStok'), satuanProduksi: val(f,'satuanProduksi'), tipeItem: val(f,'tipeItem'), parent: val(f,'parent'), stokMinimum: val(f,'stokMinimum'), tampilInput: val(f,'tampilInput'), bisaOutput: val(f,'bisaOutput'), bisaPreparasi: val(f,'bisaPreparasi'), bisaProduksi: val(f,'bisaProduksi'), bisaTransferProduk: val(f,'bisaTransferProduk'), aktif: val(f,'aktif'), urutan: val(f,'urutan'), keterangan: val(f,'keterangan')
     });
   }
 
@@ -653,9 +688,23 @@
   }
   function openModal(id){ const modal = document.getElementById(id); const overlay = modal ? modal.querySelector('.modal-overlay') : null; const content = modal ? modal.querySelector('.modal-content') : null; if (!modal || !overlay || !content) return; modal.classList.remove('hidden'); void modal.offsetWidth; overlay.classList.add('opacity-100'); overlay.classList.remove('opacity-0'); content.classList.add('scale-100','opacity-100'); content.classList.remove('scale-95','opacity-0'); }
   function closeModal(id){ const modal = document.getElementById(id); const overlay = modal ? modal.querySelector('.modal-overlay') : null; const content = modal ? modal.querySelector('.modal-content') : null; if (!modal || !overlay || !content) return; overlay.classList.remove('opacity-100'); overlay.classList.add('opacity-0'); content.classList.remove('scale-100','opacity-100'); content.classList.add('scale-95','opacity-0'); setTimeout(() => modal.classList.add('hidden'), 230); }
-  function openSetupHelpModal(){ openModal('setupHelpModal'); }
-  function closeSetupHelpModal(){ sessionStorage.setItem('APJ_SETUP_HELP_SEEN_V107','true'); closeModal('setupHelpModal'); }
-  function closeSetupFormModal(){ closeModal('setupFormModal'); }
+  function openSetupHelpModal(autoOpen){ if (autoOpen) apjMarkGuideSeen('setup-inventory.html'); openModal('setupHelpModal'); }
+  function closeSetupHelpModal(){ apjMarkGuideSeen('setup-inventory.html'); closeModal('setupHelpModal'); }
+  function resetSetupFormState(){
+    STATE.editing = null;
+    STATE.deletedRecipeDetails = [];
+    const form = document.getElementById('setupForm');
+    if (!form) return;
+    form.onsubmit = null;
+    try { form.reset(); } catch (err) {}
+    form.innerHTML = '';
+    form.dataset.mode = '';
+    form.dataset.editId = '';
+  }
+  function closeSetupFormModal(){
+    closeModal('setupFormModal');
+    setTimeout(resetSetupFormState, 260);
+  }
   function showLogoutModal(){ openModal('logoutModal'); }
   function closeLogoutModal(){ closeModal('logoutModal'); }
   async function executeLogout(){
@@ -676,7 +725,7 @@
   }
   function initModalCloseOnEsc(){ document.addEventListener('keydown', function(e){ if (e.key !== 'Escape') return; ['setupHelpModal','setupFormModal','logoutModal'].forEach(id => { const modal = document.getElementById(id); if (modal && !modal.classList.contains('hidden')) closeModal(id); }); }); }
 
-  window.APJSetupInventory = { edit: openForm, remove: removeMaster, addRecipeDetailRow: addRecipeDetailRow, removeRecipeDetailRow: removeRecipeDetailRow, addPrepBahanRow: addPrepBahanRow, removePrepBahanRow: removePrepBahanRow };
+  window.APJSetupInventory = { add: openAddForm, edit: openForm, remove: removeMaster, addRecipeDetailRow: addRecipeDetailRow, removeRecipeDetailRow: removeRecipeDetailRow, addPrepBahanRow: addPrepBahanRow, removePrepBahanRow: removePrepBahanRow };
   window.openSetupHelpModal = openSetupHelpModal;
   window.closeSetupHelpModal = closeSetupHelpModal;
   window.closeSetupFormModal = closeSetupFormModal;

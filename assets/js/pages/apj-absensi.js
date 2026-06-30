@@ -2,6 +2,22 @@
 (function(){
   'use strict';
 
+  const APJ_GUIDE_VERSION = 'V42';
+  function apjGuideUserKey() {
+    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
+    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
+  }
+  function apjGuideSeenKey(pageKey) {
+    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
+  }
+  function apjHasSeenGuide(pageKey) {
+    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
+  }
+  function apjMarkGuideSeen(pageKey) {
+    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
+  }
+
+
   var state = {
     session: null,
     user: null,
@@ -105,7 +121,7 @@
       state.jadwal = res.jadwal || null;
       var bootRiwayat = extractRiwayat(res) || extractRiwayat(res.riwayat) || extractRiwayat(res.data);
       if (hasAbsensiData(bootRiwayat)) state.riwayat = bootRiwayat;
-      else if (hasAbsensiData(loadRiwayatCache())) state.riwayat = loadRiwayatCache();
+      else { state.riwayat = null; clearRiwayatCache(); }
       if (!state.outlets.length) state.outlets = fallbackOutlets();
       applyBootstrap();
     }catch(err){
@@ -218,15 +234,38 @@
     return 'APJ_ABSENSI_STATUS_' + String(user).toLowerCase().replace(/[^a-z0-9_-]+/g,'_') + '_' + keyDate;
   }
   function saveRiwayatCache(data){
+    // APP-V.4.3 ABSENSI SHEET SOURCE FIX:
+    // Cache hanya untuk optimistic display sesaat setelah klik Check In/Out.
+    // LocalStorage lama tidak lagi dipakai sebagai sumber data absensi, karena sumber final wajib Sheet.
     try{
-      if (hasAbsensiData(data)) { sessionStorage.setItem(absensiCacheKey(), JSON.stringify(data)); localStorage.setItem(absensiCacheKey(), JSON.stringify(data)); }
+      if (hasAbsensiData(data)) sessionStorage.setItem(absensiCacheKey(), JSON.stringify({ savedAt: Date.now(), data: data }));
+    }catch(e){}
+  }
+  function clearRiwayatCache(){
+    try{ sessionStorage.removeItem(absensiCacheKey()); }catch(e){}
+    try{ localStorage.removeItem(absensiCacheKey()); }catch(e){}
+  }
+  function clearLegacyAbsensiCaches(){
+    // Bersihkan cache status lama lintas versi supaya data yang sudah dihapus dari Sheet tidak tetap tampil.
+    try{
+      var prefixes = ['APJ_ABSENSI_STATUS_'];
+      [sessionStorage, localStorage].forEach(function(store){
+        for (var i = store.length - 1; i >= 0; i--) {
+          var key = store.key(i) || '';
+          if (prefixes.some(function(prefix){ return key.indexOf(prefix) === 0; })) store.removeItem(key);
+        }
+      });
     }catch(e){}
   }
   function loadRiwayatCache(){
+    // Tidak dipakai untuk bootstrap/refresh normal. Hanya fallback optimistic beberapa detik setelah submit.
     try{
-      var raw = sessionStorage.getItem(absensiCacheKey()) || localStorage.getItem(absensiCacheKey());
+      var raw = sessionStorage.getItem(absensiCacheKey());
       if (!raw) return null;
-      var data = JSON.parse(raw);
+      var parsed = JSON.parse(raw);
+      var savedAt = Number(parsed.savedAt || 0);
+      var data = parsed.data || parsed;
+      if (!savedAt || Date.now() - savedAt > 15000) return null;
       return hasAbsensiData(data) ? data : null;
     }catch(e){ return null; }
   }
@@ -238,18 +277,10 @@
       applyRiwayat(state.riwayat);
       return true;
     }
-    var cached = loadRiwayatCache();
-    if (hasAbsensiData(cached)) {
-      state.riwayat = cached;
-      applyRiwayat(state.riwayat);
-      return true;
-    }
-    if (!hasAbsensiData(state.riwayat)) {
-      state.riwayat = null;
-      applyRiwayat(null);
-    } else {
-      applyRiwayat(state.riwayat);
-    }
+    // Jika backend/Sheet tidak mengirim riwayat, tampilan harus kosong. Jangan tampilkan cache lama.
+    state.riwayat = null;
+    clearRiwayatCache();
+    applyRiwayat(null);
     return false;
   }
 
@@ -488,8 +519,9 @@
         }
         throw new Error((res && res.pesan) || 'Absensi gagal');
       }
-      // Tampilkan hasil segera dari response / fallback lokal, lalu sinkronkan ulang dari sheet secara senyap.
-      // V220: UI langsung berubah setelah backend sukses, kemudian readback sheet dipoll sampai data terbaru tampil.
+      // Tampilkan hasil segera dari response/fallback lokal hanya sebagai optimistic display sementara.
+      // Setelah itu readback Sheet wajib menjadi sumber final.
+      state.optimisticUntil = Date.now() + 15000;
       if (hasAbsensiData(latest)) {
         setRiwayatSafe(latest, 'check-response');
       } else {
@@ -527,23 +559,27 @@
         setRiwayatSafe(latest, 'refresh');
         return options.requireKind ? riwayatHasKind(state.riwayat, options.requireKind) : true;
       }
-      // Jika backend sementara belum menemukan baris, jangan hilangkan jam yang sudah tampil/cache.
-      if (hasAbsensiData(before) && options.preserveValid !== false) {
+      // Jika Sheet tidak menemukan baris, kosongkan tampilan. Sumber final absensi adalah Sheet, bukan cache.
+      // Preserve hanya berlaku sangat singkat setelah klik Check In/Out untuk menghindari kedip saat writeback.
+      var optimistic = hasAbsensiData(before) && options.preserveValid !== false && state.optimisticUntil && Date.now() < state.optimisticUntil;
+      if (optimistic) {
         state.riwayat = before;
-        saveRiwayatCache(before);
         applyRiwayat(state.riwayat);
         return false;
       }
-      var cached = loadRiwayatCache();
-      if (hasAbsensiData(cached) && options.preserveValid !== false) {
-        state.riwayat = cached;
-        applyRiwayat(state.riwayat);
-        return false;
-      }
+      state.riwayat = null;
+      clearRiwayatCache();
       applyRiwayat(null);
       return false;
     }catch(err){
-      setRiwayatSafe(state.riwayat, 'refresh-error');
+      // Saat API error jaringan/backend, jangan munculkan localStorage lama. Pertahankan state hanya kalau memang baru submit.
+      if (state.optimisticUntil && Date.now() < state.optimisticUntil && hasAbsensiData(state.riwayat)) {
+        applyRiwayat(state.riwayat);
+      } else {
+        state.riwayat = null;
+        clearRiwayatCache();
+        applyRiwayat(null);
+      }
       return false;
     }
   }
@@ -556,6 +592,7 @@
     for (var i = 0; i < maxTry; i++) {
       var ok = await refreshRiwayat({ preserveValid: true, requireKind: kind });
       if (ok) {
+        state.optimisticUntil = 0;
         setText('absDeviceNote', (successMsg || 'Absensi berhasil') + ' Data terbaru sudah tampil.');
         return true;
       }
@@ -603,8 +640,8 @@
     if (content) { content.classList.remove('scale-100','opacity-100'); content.classList.add('scale-95','opacity-0'); }
     setTimeout(function(){ modal.classList.add('hidden'); modal.classList.remove('flex'); }, 180);
   }
-  function openAbsensiHelpModal(){ openModal('absensiHelpModal'); sessionStorage.setItem('APJ_ABSENSI_HELP_SEEN_V131','true'); }
-  function closeAbsensiHelpModal(){ closeModal('absensiHelpModal'); }
+  function openAbsensiHelpModal(autoOpen){ if (autoOpen) apjMarkGuideSeen('absensi.html'); openModal('absensiHelpModal'); }
+  function closeAbsensiHelpModal(){ apjMarkGuideSeen('absensi.html'); closeModal('absensiHelpModal'); }
   function showLogoutModal(){ openModal('logoutModal'); }
   function closeLogoutModal(){ closeModal('logoutModal'); }
   function executeLogout(){ if (window.APJAuth && APJAuth.logout) APJAuth.logout(); else { localStorage.clear(); sessionStorage.clear(); window.location.href = (cfg().loginPage || 'index.html'); } }
@@ -647,6 +684,7 @@
 
   async function init(){
     initSidebar();
+    clearLegacyAbsensiCaches();
     if (!initUser()) return;
     bind();
     // V124: bootstrap harus selesai dulu supaya GPS memakai outlet/radius asli dari APJ_CORE_USER,
@@ -654,7 +692,7 @@
     await loadBootstrap();
     startCamera();
     getLocation();
-    setTimeout(function(){ if (sessionStorage.getItem('APJ_ABSENSI_HELP_SEEN_V131') !== 'true') openAbsensiHelpModal(); }, 500);
+    setTimeout(function(){ if (!apjHasSeenGuide('absensi.html')) openAbsensiHelpModal(true); }, 500);
   }
 
   window.openMobileSidebar = openMobileSidebar;

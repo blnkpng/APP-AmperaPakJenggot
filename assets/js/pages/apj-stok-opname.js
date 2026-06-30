@@ -8,6 +8,22 @@
 (function () {
   'use strict';
 
+  const APJ_GUIDE_VERSION = 'V42';
+  function apjGuideUserKey() {
+    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
+    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
+  }
+  function apjGuideSeenKey(pageKey) {
+    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
+  }
+  function apjHasSeenGuide(pageKey) {
+    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
+  }
+  function apjMarkGuideSeen(pageKey) {
+    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
+  }
+
+
   const CONFIG = window.APJ_CONFIG || {};
   const API_URL = CONFIG.inventoryApiUrl || (CONFIG.apis && CONFIG.apis.inventory) || 'https://script.google.com/macros/s/AKfycbzisWWG4QzlI2_xB9arSGLAx0zn3Rgcu_Jt9tFXpJZTcXohFXwmE0sDTGCxf-i2OL0k/exec';
   const CORE_API_URL = CONFIG.coreApiUrl || (CONFIG.apis && CONFIG.apis.core) || '';
@@ -48,7 +64,7 @@
     await loadKategoriV3();
 
     setTimeout(() => {
-      if (sessionStorage.getItem('APJ_OPNAME_HELP_SEEN_V33') !== 'true') openOpnameHelpModal(true);
+      if (!apjHasSeenGuide('stok-opname.html')) openOpnameHelpModal(true);
     }, 450);
   }
 
@@ -526,11 +542,12 @@
   function openOpnameHelpModal(autoOpen) {
     const modal = document.getElementById('opnameHelpModal');
     if (modal && autoOpen) modal.dataset.autoOpen = 'true';
+    if (autoOpen) apjMarkGuideSeen('stok-opname.html');
     openModal('opnameHelpModal');
   }
 
   function closeOpnameHelpModal() {
-    sessionStorage.setItem('APJ_OPNAME_HELP_SEEN_V33', 'true');
+    apjMarkGuideSeen('stok-opname.html');
     closeModal('opnameHelpModal');
   }
 

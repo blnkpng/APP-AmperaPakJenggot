@@ -2,6 +2,22 @@
 /* APJ HR KARYAWAN V177 - Shift Full Form */
 (function(){
   'use strict';
+
+  const APJ_GUIDE_VERSION = 'V42';
+  function apjGuideUserKey() {
+    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
+    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
+  }
+  function apjGuideSeenKey(pageKey) {
+    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
+  }
+  function apjHasSeenGuide(pageKey) {
+    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
+  }
+  function apjMarkGuideSeen(pageKey) {
+    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
+  }
+
   var MENU_GROUP_KEY='APJ_DASHBOARD_MENU_GROUPS_V31';
   var SIDEBAR_KEY='APJ_SIDEBAR_COLLAPSED';
   var state={session:null, users:[], shifts:[], jadwal:[], outlets:[], activeTab:'karyawan', loaded:false, offline:false, detailUser:null, detailEditing:false, jadwalEdit:null, shiftEdit:null};
@@ -867,8 +883,8 @@ function currentExportPeriod(){
   function toggleSidebarCollapse(){ var sidebar=$('sidebar'); if(!sidebar || window.innerWidth<1024) return; var next=!sidebar.classList.contains('sidebar-collapsed'); localStorage.setItem(SIDEBAR_KEY,next?'true':'false'); applySidebarState(); }
   function openModal(id){ var modal=$(id); if(!modal) return; modal.classList.remove('hidden'); requestAnimationFrame(function(){ var overlay=modal.querySelector('.modal-overlay'); var content=modal.querySelector('.modal-content'); if(overlay) overlay.classList.remove('opacity-0'); if(content) content.classList.remove('opacity-0','scale-95'); }); }
   function closeModal(id){ var modal=$(id); if(!modal) return; var overlay=modal.querySelector('.modal-overlay'); var content=modal.querySelector('.modal-content'); if(overlay) overlay.classList.add('opacity-0'); if(content) content.classList.add('opacity-0','scale-95'); setTimeout(function(){ modal.classList.add('hidden'); },160); }
-  function openHrKaryawanHelpModal(){ openModal('hrKaryawanHelpModal'); }
-  function closeHrKaryawanHelpModal(){ closeModal('hrKaryawanHelpModal'); }
+  function openHrKaryawanHelpModal(autoOpen){ if (autoOpen) apjMarkGuideSeen('hr-karyawan.html'); openModal('hrKaryawanHelpModal'); }
+  function closeHrKaryawanHelpModal(){ apjMarkGuideSeen('hr-karyawan.html'); closeModal('hrKaryawanHelpModal'); }
   function closeHrFormModal(){ closeModal('hrFormModal'); }
   function closeHrJadwalModal(){ closeModal('hrJadwalModal'); }
   function closeHrDetailModal(){ closeModal('hrDetailModal'); }

@@ -1,6 +1,22 @@
 /* APJ TRANSFER PRODUK V105 - PIC DROPDOWN ENABLE FIX */
 const APPS_SCRIPT_URL = (window.APJ_CONFIG && (window.APJ_CONFIG.inventoryApiUrl || (window.APJ_CONFIG.apis && window.APJ_CONFIG.apis.inventory))) || "https://script.google.com/macros/s/AKfycbx3sNyaAR5b1MZjpjzuCuyeYuVi-bL0k1Nb1MgI40l5kQmSWfmxXCSfTpBy7sQ-0oQ/exec";
 const CORE_APPS_SCRIPT_URL = (window.APJ_CONFIG && (window.APJ_CONFIG.coreApiUrl || (window.APJ_CONFIG.apis && window.APJ_CONFIG.apis.core))) || "";
+
+const APJ_GUIDE_VERSION = 'V42';
+function apjGuideUserKey() {
+  const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
+  return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
+}
+function apjGuideSeenKey(pageKey) {
+  return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
+}
+function apjHasSeenGuide(pageKey) {
+  try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
+}
+function apjMarkGuideSeen(pageKey) {
+  try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
+}
+
     let globalProduk = [];
     let globalAllProduk = [];
     let globalOutlets = [];
@@ -34,7 +50,7 @@ const CORE_APPS_SCRIPT_URL = (window.APJ_CONFIG && (window.APJ_CONFIG.coreApiUrl
       }
 
       setTimeout(() => {
-        if (sessionStorage.getItem('APJ_TRANSFER_HELP_SEEN_V48') !== 'true') openTransferHelpModal(true);
+        if (!apjHasSeenGuide('transfer-produksi.html')) openTransferHelpModal(true);
       }, 450);
       setProductTableLoading('Memuat data halaman transfer...');
       loadInit();
@@ -56,7 +72,7 @@ const CORE_APPS_SCRIPT_URL = (window.APJ_CONFIG && (window.APJ_CONFIG.coreApiUrl
       const content = modal ? modal.querySelector('.modal-content') : null;
       if (!modal || !overlay || !content) return;
       if (!autoOpen) closeMobileSidebar();
-      if (autoOpen) modal.dataset.autoOpen = 'true';
+      if (autoOpen) { modal.dataset.autoOpen = 'true'; apjMarkGuideSeen('transfer-produksi.html'); }
       modal.classList.remove('hidden');
       void modal.offsetWidth;
       overlay.classList.add('opacity-100');
@@ -70,7 +86,7 @@ const CORE_APPS_SCRIPT_URL = (window.APJ_CONFIG && (window.APJ_CONFIG.coreApiUrl
       const overlay = modal ? modal.querySelector('.modal-overlay') : null;
       const content = modal ? modal.querySelector('.modal-content') : null;
       if (!modal || !overlay || !content) return;
-      sessionStorage.setItem('APJ_TRANSFER_HELP_SEEN_V48', 'true');
+      apjMarkGuideSeen('transfer-produksi.html');
       overlay.classList.remove('opacity-100');
       overlay.classList.add('opacity-0');
       content.classList.remove('scale-100', 'opacity-100');
@@ -1485,6 +1501,22 @@ const CORE_APPS_SCRIPT_URL = (window.APJ_CONFIG && (window.APJ_CONFIG.coreApiUrl
 /* APP-APJ V1.8 - grouped sidebar handlers for transfer-produksi */
 (function(){
   'use strict';
+
+  const APJ_GUIDE_VERSION = 'V42';
+  function apjGuideUserKey() {
+    const raw = localStorage.getItem('APJ_USER_USERNAME') || localStorage.getItem('APJ_USER_ID') || localStorage.getItem('APJ_USER_NAME') || 'guest';
+    return String(raw || 'guest').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_') || 'guest';
+  }
+  function apjGuideSeenKey(pageKey) {
+    return 'APJ_GUIDE_SEEN_' + APJ_GUIDE_VERSION + '::' + apjGuideUserKey() + '::' + String(pageKey || location.pathname.split('/').pop() || 'page').toLowerCase();
+  }
+  function apjHasSeenGuide(pageKey) {
+    try { return localStorage.getItem(apjGuideSeenKey(pageKey)) === 'true'; } catch (err) { return false; }
+  }
+  function apjMarkGuideSeen(pageKey) {
+    try { localStorage.setItem(apjGuideSeenKey(pageKey), 'true'); } catch (err) {}
+  }
+
   const GROUP_KEY = 'APJ_DASHBOARD_MENU_GROUPS';
   function safeParseJSON(text){ try { return JSON.parse(text || '{}') || {}; } catch(e){ return {}; } }
   function setGroup(group, isOpen){
