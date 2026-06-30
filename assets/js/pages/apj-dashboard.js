@@ -1,4 +1,4 @@
-/* APJ Dashboard V221 - Auto National Holiday Calendar */
+/* APJ Dashboard V222 - Fast Calendar Load */
 (function () {
   'use strict';
 
@@ -41,6 +41,8 @@
   let absensiCalendarRemoteTimer = null;
   let absensiCalendarRemoteLoadingKey = '';
   let absensiCalendarRemoteLoadedKey = '';
+  const APJ_CALENDAR_CACHE_PREFIX = 'APJ_DASH_CALENDAR_V46_FIX4_';
+  const APJ_CALENDAR_CACHE_TTL_MS = 2 * 60 * 1000;
   let homeBirthdayContext = { isBirthday:false, name:'', rows:[], calendar:null, wishes:[], sentWishes:[], birthdayDirectory:[] };
   let homeBackendLoaded = false;
   let homeLatestTodayItems = [];
@@ -578,9 +580,70 @@
   function setAbsensiCalendarView(year, month, day, shouldLoadRemote) {
     absensiCalendarViewDate = new Date(Number(year), Number(month), Number(day || 1));
     absensiCalendarSelectedDay = Number(day || 1);
-    const currentCalendar = getCalendarForView(absensiCalendarCache || {}, absensiCalendarViewDate);
-    renderAbsensiCalendarV168(currentCalendar);
+
+    // FIX4: kalender langsung digambar dari cache lokal/shell bulan,
+    // lalu data Sheet/API disinkronkan di belakang. Ini mencegah layar terasa lama kosong.
+    const instantCalendar = getInstantCalendarForView(absensiCalendarViewDate);
+    renderAbsensiCalendarV168(instantCalendar);
+
     if (shouldLoadRemote) scheduleAbsensiCalendarMonthSync();
+  }
+
+  function getInstantCalendarForView(viewDate) {
+    const view = viewDate || new Date();
+    const key = calendarViewKey(view);
+    const cached = readCalendarMonthCache(key);
+    if (cached) return normalizeCalendarForView(cached, view);
+
+    const current = getCalendarForView(absensiCalendarCache || {}, view);
+    if (current && !current.__loading) return current;
+
+    return buildCalendarShellForView(view);
+  }
+
+  function buildCalendarShellForView(viewDate) {
+    const view = viewDate || new Date();
+    const key = calendarViewKey(view);
+    return {
+      tanggalMerah: [],
+      pesanan: [],
+      ulangTahun: [],
+      __viewKey: key,
+      viewKey: key,
+      __loading: true
+    };
+  }
+
+  function readCalendarMonthCache(key) {
+    if (!key) return null;
+    try {
+      const raw = localStorage.getItem(APJ_CALENDAR_CACHE_PREFIX + key);
+      if (!raw) return null;
+      const box = JSON.parse(raw);
+      if (!box || !box.calendar || !box.ts) return null;
+      if ((Date.now() - Number(box.ts || 0)) > APJ_CALENDAR_CACHE_TTL_MS) return null;
+      const cal = box.calendar || {};
+      cal.__viewKey = key;
+      return cal;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function saveCalendarMonthCache(key, calendar) {
+    if (!key || !calendar) return;
+    try {
+      const safe = normalizeCalendarForView(calendar, keyToDate(key));
+      safe.__viewKey = key;
+      localStorage.setItem(APJ_CALENDAR_CACHE_PREFIX + key, JSON.stringify({ ts: Date.now(), calendar: safe }));
+    } catch (err) {}
+  }
+
+  function keyToDate(key) {
+    const parts = String(key || '').split('-');
+    const y = Number(parts[0] || new Date().getFullYear());
+    const m = Number(parts[1] || 1) - 1;
+    return new Date(y, m, 1);
   }
 
   function getCalendarForView(calendar, viewDate) {
@@ -611,9 +674,13 @@
       const calendar = normalizeCalendarForView(normalized.calendar || {}, view);
       calendar.__viewKey = key;
       absensiCalendarRemoteLoadedKey = key;
+      saveCalendarMonthCache(key, calendar);
       renderAbsensiCalendarV168(calendar);
     } catch (error) {
-      if (PAGE_MODE === 'central') {
+      const cached = readCalendarMonthCache(key);
+      if (cached) {
+        renderAbsensiCalendarV168(cached);
+      } else if (PAGE_MODE === 'central') {
         const fallback = normalizeCalendarForView(buildCentralFallbackCalendar(getUserDataObject(), false, ''), view);
         fallback.__viewKey = key;
         renderAbsensiCalendarV168(fallback);
@@ -810,8 +877,11 @@
 
     const fallbackCalendar = buildCentralFallbackCalendar(user, birthdayToday, name);
     renderHomeBirthdayCards(birthdayToday, name, fallbackCalendar);
-    renderAbsensiCalendarV168(fallbackCalendar);
+    renderAbsensiCalendarV168(getInstantCalendarForView(absensiCalendarViewDate || new Date()) || fallbackCalendar);
     if (birthdayToday) scheduleHomeBirthdayNotice(true, name, fallbackCalendar);
+
+    // FIX4: dashboard langsung ditampilkan; API Sheet/API libur nasional tetap sinkron di belakang.
+    setDashboardHomeLoading(false);
 
     const backendTask = loadCentralHomeBackendData(!!isManualRefresh, birthdayToday, name);
     const calendarTask = loadCentralHomeCalendarData(fallbackCalendar, isManualRefresh, birthdayToday, name);
@@ -939,11 +1009,18 @@
   async function loadCentralHomeCalendarData(fallbackCalendar, isManualRefresh, birthdayToday, name) {
     try {
       const view = absensiCalendarViewDate || new Date();
+      const key = calendarViewKey(view);
+      const cached = !isManualRefresh ? readCalendarMonthCache(key) : null;
+      if (cached) {
+        renderAbsensiCalendarV168(cached);
+        renderHomeBirthdayCards(!!birthdayToday, name, cached);
+      }
       const res = await absensiCall(absensiActionName('dashboard', 'getDashboardAbsensiV170'), userPayload({ tanggal: dateISOLocal(new Date(view.getFullYear(), view.getMonth(), 1)), calendarOnly: true }));
       if (res && res.success === false) throw new Error(res.pesan || 'Kalender umum gagal dimuat.');
       const normalized = normalizeAbsensiDashboardData(res || {});
       const mergedCalendar = mergeCentralCalendar(normalized.calendar || {}, fallbackCalendar || {});
       mergedCalendar.__viewKey = calendarViewKey(view);
+      saveCalendarMonthCache(mergedCalendar.__viewKey, mergedCalendar);
       renderAbsensiCalendarV168(mergedCalendar);
       renderHomeBirthdayCards(!!birthdayToday, name, mergedCalendar);
       scheduleHomeBirthdayNotice(homeBirthdayContext.isBirthday, name, mergedCalendar);
