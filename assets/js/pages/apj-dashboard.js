@@ -36,6 +36,7 @@
   };
   let currentSession = null;
   let absensiCalendarSelectedDay = null;
+  let absensiCalendarViewDate = new Date();
   let absensiCalendarCache = null;
   let homeBirthdayContext = { isBirthday:false, name:'', rows:[], calendar:null, wishes:[], sentWishes:[], birthdayDirectory:[] };
   let homeBackendLoaded = false;
@@ -450,20 +451,23 @@
     const el = document.getElementById('calendarGrid');
     if (!el) return;
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
+    const view = absensiCalendarViewDate || now;
+    const year = view.getFullYear();
+    const month = view.getMonth();
     const today = now.getDate();
+    const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
     const first = new Date(year, month, 1);
     const start = (first.getDay() + 6) % 7;
     const days = new Date(year, month + 1, 0).getDate();
     absensiCalendarCache = calendar || {};
-    if (!absensiCalendarSelectedDay || absensiCalendarSelectedDay > days) absensiCalendarSelectedDay = today;
-    setText('calendarMonth', now.toLocaleDateString('id-ID', { month:'long', year:'numeric' }));
+    if (!absensiCalendarSelectedDay || absensiCalendarSelectedDay > days) absensiCalendarSelectedDay = isCurrentMonth ? today : 1;
+    setText('calendarMonth', view.toLocaleDateString('id-ID', { month:'long', year:'numeric' }));
     setText('calendarTitle', 'Kalender');
-    setText('calendarModePill', 'Hari ini');
-    const red = indexCalendarRows(calendar.tanggalMerah);
-    const order = indexCalendarRows(calendar.pesanan);
-    const birth = indexCalendarRows(calendar.ulangTahun);
+    setText('calendarModePill', isCurrentMonth ? 'Hari ini' : 'Pilih bulan');
+    ensureAbsensiCalendarControls(view);
+    const red = indexCalendarRows(calendar.tanggalMerah, view);
+    const order = indexCalendarRows(calendar.pesanan, view);
+    const birth = indexCalendarRows(calendar.ulangTahun, view, { recurringMonth: true });
     const labels = ['S','S','R','K','J','S','M'];
     let cells = labels.map(function (d) { return '<div class="calendar-cell calendar-label">' + d + '</div>'; }).join('');
     for (let i = 0; i < start; i++) cells += '<div class="calendar-cell muted"></div>';
@@ -471,15 +475,15 @@
       const dt = new Date(year, month, d);
       const cls = ['calendar-cell', 'abs-cal-day'];
       const note = [];
-      if (d === today) { cls.push('today'); note.push('Hari ini'); }
+      if (isCurrentMonth && d === today) { cls.push('today'); note.push('Hari ini'); }
       if (d === absensiCalendarSelectedDay) cls.push('selected-date');
       if (red[d] || dt.getDay() === 0) { cls.push('red-date'); (red[d] || [{ label:'Minggu' }]).forEach(function (x) { note.push(x.label || 'Tanggal merah'); }); }
       if (order[d]) { cls.push('order-date'); order[d].forEach(function (x) { note.push('Pesanan: ' + (x.label || x.nama || x.jam || '-')); }); }
-      if (birth[d]) { cls.push('birthday-date'); birth[d].forEach(function (x) { note.push('Ultah: ' + (x.nama || '-')); }); }
+      if (birth[d]) { cls.push('birthday-date'); birth[d].forEach(function (x) { note.push('Ultah: ' + (x.nama || x.label || '-')); }); }
       if (note.length > 1) cls.push('multi-date');
-      const hasMarker = (d === today) || !!red[d] || dt.getDay() === 0 || !!order[d] || !!birth[d];
+      const hasMarker = (isCurrentMonth && d === today) || !!red[d] || dt.getDay() === 0 || !!order[d] || !!birth[d];
       let markerClass = '';
-      if (d === today) markerClass = 'today';
+      if (isCurrentMonth && d === today) markerClass = 'today';
       else if (red[d] || dt.getDay() === 0) markerClass = 'red';
       else if (order[d]) markerClass = 'order';
       else if (birth[d]) markerClass = 'birthday';
@@ -488,7 +492,7 @@
     el.innerHTML = cells;
     el.querySelectorAll('[data-calendar-day]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        absensiCalendarSelectedDay = Number(btn.getAttribute('data-calendar-day') || today) || today;
+        absensiCalendarSelectedDay = Number(btn.getAttribute('data-calendar-day') || (isCurrentMonth ? today : 1)) || (isCurrentMonth ? today : 1);
         el.querySelectorAll('.abs-cal-day').forEach(function (x) { x.classList.remove('selected-date'); });
         btn.classList.add('selected-date');
         renderAbsensiCalendarEventsForDay(absensiCalendarCache || {}, absensiCalendarSelectedDay, true);
@@ -496,6 +500,79 @@
     });
     bindAbsensiCalendarBack();
     showAbsensiCalendarGrid();
+  }
+
+  function ensureAbsensiCalendarControls(view) {
+    const grid = document.getElementById('calendarGrid');
+    if (!grid || !grid.parentNode) return;
+    let wrap = document.getElementById('calendarNavControls');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.id = 'calendarNavControls';
+      wrap.className = 'calendar-nav-controls';
+      wrap.innerHTML = '<button type="button" class="calendar-nav-btn" data-calendar-nav="prev">‹</button>' +
+        '<select id="calendarMonthSelect" class="calendar-nav-select" aria-label="Pilih bulan kalender"></select>' +
+        '<select id="calendarYearSelect" class="calendar-nav-select" aria-label="Pilih tahun kalender"></select>' +
+        '<button type="button" class="calendar-nav-btn" data-calendar-nav="next">›</button>' +
+        '<button type="button" class="calendar-nav-today" data-calendar-nav="today">Hari ini</button>';
+      grid.parentNode.insertBefore(wrap, grid);
+      wrap.addEventListener('click', function (event) {
+        const action = event.target && event.target.getAttribute && event.target.getAttribute('data-calendar-nav');
+        if (!action) return;
+        if (action === 'prev') moveCalendarMonth(-1);
+        else if (action === 'next') moveCalendarMonth(1);
+        else if (action === 'today') {
+          absensiCalendarViewDate = new Date();
+          absensiCalendarSelectedDay = new Date().getDate();
+          renderAbsensiCalendarV168(absensiCalendarCache || {});
+        }
+      });
+    }
+    const monthSelect = document.getElementById('calendarMonthSelect');
+    const yearSelect = document.getElementById('calendarYearSelect');
+    if (monthSelect && !monthSelect.__apjCalendarBound) {
+      monthSelect.__apjCalendarBound = true;
+      monthSelect.innerHTML = Array.from({ length: 12 }).map(function (_, i) {
+        const label = new Date(2026, i, 1).toLocaleDateString('id-ID', { month:'long' });
+        return '<option value="' + i + '">' + esc(label) + '</option>';
+      }).join('');
+      monthSelect.addEventListener('change', function () {
+        absensiCalendarViewDate = new Date(Number(yearSelect && yearSelect.value || view.getFullYear()), Number(monthSelect.value || 0), 1);
+        absensiCalendarSelectedDay = 1;
+        renderAbsensiCalendarV168(absensiCalendarCache || {});
+      });
+    }
+    if (yearSelect) {
+      const currentYear = new Date().getFullYear();
+      const minYear = currentYear - 2;
+      const maxYear = currentYear + 3;
+      const desired = String(view.getFullYear());
+      const currentOptions = Array.from(yearSelect.options || []).map(function (o) { return o.value; }).join('|');
+      const neededOptions = Array.from({ length: maxYear - minYear + 1 }).map(function (_, i) { return String(minYear + i); }).join('|');
+      if (currentOptions !== neededOptions) {
+        yearSelect.innerHTML = Array.from({ length: maxYear - minYear + 1 }).map(function (_, i) {
+          const y = minYear + i;
+          return '<option value="' + y + '">' + y + '</option>';
+        }).join('');
+      }
+      if (!yearSelect.__apjCalendarBound) {
+        yearSelect.__apjCalendarBound = true;
+        yearSelect.addEventListener('change', function () {
+          absensiCalendarViewDate = new Date(Number(yearSelect.value || view.getFullYear()), Number(monthSelect && monthSelect.value || view.getMonth()), 1);
+          absensiCalendarSelectedDay = 1;
+          renderAbsensiCalendarV168(absensiCalendarCache || {});
+        });
+      }
+      if (Array.from(yearSelect.options || []).some(function (o) { return o.value === desired; })) yearSelect.value = desired;
+    }
+    if (monthSelect) monthSelect.value = String(view.getMonth());
+  }
+
+  function moveCalendarMonth(delta) {
+    const base = absensiCalendarViewDate || new Date();
+    absensiCalendarViewDate = new Date(base.getFullYear(), base.getMonth() + Number(delta || 0), 1);
+    absensiCalendarSelectedDay = 1;
+    renderAbsensiCalendarV168(absensiCalendarCache || {});
   }
 
   function lockAbsensiCalendarCardHeight(card) {
@@ -525,21 +602,25 @@
     if (back) back.classList.add('hidden');
     if (pill) pill.classList.remove('hidden');
     setText('calendarTitle', 'Kalender');
+    const view = absensiCalendarViewDate || new Date();
     const now = new Date();
-    setText('calendarMonth', now.toLocaleDateString('id-ID', { month:'long', year:'numeric' }));
-    setText('calendarModePill', 'Hari ini');
+    const isCurrentMonth = view.getFullYear() === now.getFullYear() && view.getMonth() === now.getMonth();
+    setText('calendarMonth', view.toLocaleDateString('id-ID', { month:'long', year:'numeric' }));
+    setText('calendarModePill', isCurrentMonth ? 'Hari ini' : 'Pilih bulan');
     html('calendarEvents', '');
   }
 
   function renderAbsensiCalendarEventsForDay(calendar, day, openCard) {
     const now = new Date();
-    const selectedDay = day || now.getDate();
-    const dt = new Date(now.getFullYear(), now.getMonth(), selectedDay);
-    const red = indexCalendarRows(calendar.tanggalMerah);
-    const order = indexCalendarRows(calendar.pesanan);
-    const birth = indexCalendarRows(calendar.ulangTahun);
+    const view = absensiCalendarViewDate || now;
+    const selectedDay = day || (view.getFullYear() === now.getFullYear() && view.getMonth() === now.getMonth() ? now.getDate() : 1);
+    const dt = new Date(view.getFullYear(), view.getMonth(), selectedDay);
+    const isToday = dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && selectedDay === now.getDate();
+    const red = indexCalendarRows(calendar.tanggalMerah, view);
+    const order = indexCalendarRows(calendar.pesanan, view);
+    const birth = indexCalendarRows(calendar.ulangTahun, view, { recurringMonth: true });
     const events = [];
-    if (selectedDay === now.getDate()) events.push({ type:'Hari ini', label: dt.toLocaleDateString('id-ID', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }) });
+    if (isToday) events.push({ type:'Hari ini', label: dt.toLocaleDateString('id-ID', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }) });
     const redRows = red[selectedDay] || (dt.getDay() === 0 ? [{ label:'Minggu' }] : []);
     redRows.forEach(function (x) { events.push({ type:'Tanggal merah', label:x.label || x.nama || 'Libur nasional' }); });
     (order[selectedDay] || []).forEach(function (x) { events.push({ type:'Pesanan', label:x.label || x.nama || x.jam || '-' }); });
@@ -568,10 +649,11 @@
     }
   }
 
-  function indexCalendarRows(rows) {
+  function indexCalendarRows(rows, viewDate, options) {
     const map = {};
     (rows || []).forEach(function (r) {
-      const d = Number(r.day || r.tanggal || r.date || 0);
+      if (!calendarRowMatchesView(r, viewDate || new Date(), options || {})) return;
+      const d = Number(getCalendarDayValue(r) || 0);
       if (!d) return;
       if (!map[d]) map[d] = [];
       map[d].push(r || {});
@@ -579,10 +661,37 @@
     return map;
   }
 
+  function calendarRowMatchesView(row, viewDate, options) {
+    if (!row) return false;
+    const view = viewDate || new Date();
+    const parsed = getCalendarRowParsedDate(row);
+    const monthValue = row.month || row.bulan || row.MONTH || row.BULAN || row.tanggalBulan || row.TANGGAL_BULAN;
+    if (parsed) {
+      if (parsed.getMonth() !== view.getMonth()) return false;
+      const raw = String(rawCalendarDateValue(row) || '');
+      const hasExplicitYear = /\d{4}/.test(raw) || row.year || row.tahun || row.YEAR || row.TAHUN;
+      if (hasExplicitYear && !options.recurringMonth && parsed.getFullYear() !== view.getFullYear()) return false;
+      return true;
+    }
+    const m = Number(monthValue || 0);
+    if (m && m >= 1 && m <= 12) return (m - 1) === view.getMonth();
+    return true;
+  }
+
+  function getCalendarRowParsedDate(row) {
+    const raw = rawCalendarDateValue(row);
+    return raw ? parseAnyDate(raw) : null;
+  }
+
+  function rawCalendarDateValue(row) {
+    if (!row) return '';
+    return row.tanggal || row.date || row.TANGGAL || row.tanggalLahir || row.TANGGAL_LAHIR || row.ulangTahun || row.ULTAH || row.timestamp || row.createdAt || '';
+  }
+
   function indexDays(rows) {
     const map = {};
     (rows || []).forEach(function (r) {
-      const d = Number(r.day || r.tanggal || r.date || 0);
+      const d = Number(getCalendarDayValue(r) || 0);
       if (d) map[d] = true;
     });
     return map;
@@ -610,21 +719,7 @@
     const birthdayToday = isBirthdayToday(user, currentSession);
     const name = currentSession && (currentSession.name || currentSession.nama || currentSession.username) || 'Pengguna';
 
-    setText('modeBadge', birthdayToday ? 'APJ Central • Ulang Tahun' : 'APJ Central • Live');
-    setText('welcomeNama', name);
-    if (birthdayToday) {
-      setText('greetingText', 'Selamat ulang tahun');
-      setText('greetingEmoji', '🎂');
-      setText('modeDescription', 'Semoga sehat, bahagia, rezeki lancar, dan terus bertumbuh bersama APJ. APJ - Solid, APJ - YES!');
-      const hero = document.getElementById('heroCard');
-      if (hero) hero.classList.add('is-birthday-hero');
-    } else {
-      setText('greetingText', getGreetingLabel());
-      setText('greetingEmoji', '👋');
-      setText('modeDescription', 'Selamat datang di APJ Central. Semoga harimu lancar, semangat, dan APJ makin solid.');
-      const hero = document.getElementById('heroCard');
-      if (hero) hero.classList.remove('is-birthday-hero');
-    }
+    applyCentralBirthdayHero(birthdayToday, name);
 
     renderCentralMiniInfo(birthdayToday);
     renderHomeEditButtons();
@@ -720,12 +815,8 @@
       clearBirthdayMessageLocalCache();
       homeBirthdayContext.birthdayDirectory = arr(res.birthdays || res.ulangTahun || []).map(enrichBirthdayRow);
       const backendCalendar = { tanggalMerah: [], pesanan: [], ulangTahun: homeBirthdayContext.birthdayDirectory.slice() };
-      if (backendCalendar.ulangTahun.length) {
-        renderHomeBirthdayCards(!!birthdayToday, name, backendCalendar);
-        scheduleHomeBirthdayNotice(!!birthdayToday, name, backendCalendar);
-      } else {
-        renderBirthdayInbox(!!birthdayToday, name);
-      }
+      renderHomeBirthdayCards(!!birthdayToday, name, backendCalendar);
+      scheduleHomeBirthdayNotice(homeBirthdayContext.isBirthday, name, backendCalendar);
       if (isManualRefresh) showToast('Data Dashboard Utama dari Core User sudah dimuat.', 'success');
       return res;
     } catch (error) {
@@ -770,12 +861,12 @@
       const mergedCalendar = mergeCentralCalendar(normalized.calendar || {}, fallbackCalendar || {});
       renderAbsensiCalendarV168(mergedCalendar);
       renderHomeBirthdayCards(!!birthdayToday, name, mergedCalendar);
-      scheduleHomeBirthdayNotice(!!birthdayToday, name, mergedCalendar);
+      scheduleHomeBirthdayNotice(homeBirthdayContext.isBirthday, name, mergedCalendar);
       return mergedCalendar;
     } catch (error) {
       renderAbsensiCalendarV168(fallbackCalendar || { tanggalMerah: [], pesanan: [], ulangTahun: [] });
       renderHomeBirthdayCards(!!birthdayToday, name, fallbackCalendar || { ulangTahun: [] });
-      scheduleHomeBirthdayNotice(!!birthdayToday, name, fallbackCalendar || { ulangTahun: [] });
+      scheduleHomeBirthdayNotice(homeBirthdayContext.isBirthday, name, fallbackCalendar || { ulangTahun: [] });
       if (isManualRefresh) showToast('Kalender umum memakai data lokal: ' + (error && error.message ? error.message : 'API belum aktif'), 'warning');
       return fallbackCalendar || { tanggalMerah: [], pesanan: [], ulangTahun: [] };
     }
@@ -996,27 +1087,87 @@
     try { return arr(safeParseJSON(localStorage.getItem(getBirthdayCacheKey()) || '[]')); } catch (ignore) { return []; }
   }
 
-  function renderHomeBirthdayCards(isBirthday, name, calendar) {
-    const today = new Date().getDate();
-    let rows = arr((calendar || {}).ulangTahun).filter(function (r) { return getCalendarDayValue(r) === today; });
-    if (!rows.length) rows = readCachedTodayBirthdays();
-    if (isBirthday && !rows.some(function (r) { return normalizeNameKey(r.nama || r.label || r.Nama) === normalizeNameKey(name); })) {
-      rows.unshift({ nama: name || 'Karyawan APJ', username: currentSession && currentSession.username || '' });
+  function clearCachedTodayBirthdays() {
+    try {
+      localStorage.removeItem(getBirthdayCacheKey());
+      Object.keys(localStorage).forEach(function (key) {
+        if (/^APJ_HOME_TODAY_BIRTHDAYS_/.test(key)) localStorage.removeItem(key);
+      });
+    } catch (ignore) {}
+  }
+
+  function isCalendarRowToday(row) {
+    const now = new Date();
+    if (!calendarRowMatchesView(row, now, { recurringMonth: true })) return false;
+    return Number(getCalendarDayValue(row) || 0) === now.getDate();
+  }
+
+  function isCurrentUserBirthdayRow(row, name) {
+    if (!row) return false;
+    const session = currentSession || {};
+    const userKey = normalizeNameKey(session.username || session.userName || '');
+    const rowUserKey = normalizeNameKey(getBirthdayRowUsername(row));
+    if (userKey && rowUserKey && userKey === rowUserKey) return true;
+    const selfNameKey = normalizeNameKey(name || session.name || session.nama || session.username || '');
+    const rowNameKey = normalizeNameKey(getBirthdayRowName(row));
+    return !!selfNameKey && !!rowNameKey && selfNameKey === rowNameKey;
+  }
+
+  function applyCentralBirthdayHero(isBirthday, name) {
+    setText('modeBadge', isBirthday ? 'APJ Central • Ulang Tahun' : 'APJ Central • Live');
+    setText('welcomeNama', name || 'Pengguna');
+    const hero = document.getElementById('heroCard');
+    if (isBirthday) {
+      setText('greetingText', 'Selamat ulang tahun');
+      setText('greetingEmoji', '🎂');
+      setText('modeDescription', 'Semoga sehat, bahagia, rezeki lancar, dan terus bertumbuh bersama APJ. APJ - Solid, APJ - YES!');
+      if (hero) hero.classList.add('is-birthday-hero');
+    } else {
+      setText('greetingText', getGreetingLabel());
+      setText('greetingEmoji', '👋');
+      setText('modeDescription', 'Selamat datang di APJ Central. Semoga harimu lancar, semangat, dan APJ makin solid.');
+      if (hero) hero.classList.remove('is-birthday-hero');
     }
+  }
+
+  function renderHomeBirthdayCards(isBirthday, name, calendar) {
+    let rows = arr((calendar || {}).ulangTahun).filter(isCalendarRowToday);
     rows = dedupeBirthdayRows(enrichBirthdayRows(rows));
+    const selfBirthdayFromSheet = rows.some(function (r) { return isCurrentUserBirthdayRow(r, name); });
+    const actualIsBirthday = !!isBirthday || selfBirthdayFromSheet;
+
+    if (actualIsBirthday && !rows.some(function (r) { return isCurrentUserBirthdayRow(r, name); })) {
+      rows.unshift({ nama: name || 'Karyawan APJ', username: currentSession && currentSession.username || '' });
+      rows = dedupeBirthdayRows(enrichBirthdayRows(rows));
+    }
+
     if (rows.length) cacheTodayBirthdays(rows);
-    homeBirthdayContext = { isBirthday:!!isBirthday, name:name || '', rows:rows, calendar:calendar || {}, wishes: homeBirthdayContext.wishes || [], sentWishes: homeBirthdayContext.sentWishes || [], birthdayDirectory: homeBirthdayContext.birthdayDirectory || [] };
+    else clearCachedTodayBirthdays();
+
+    homeBirthdayContext = {
+      isBirthday: !!actualIsBirthday,
+      name: name || '',
+      rows: rows,
+      calendar: calendar || {},
+      wishes: homeBirthdayContext.wishes || [],
+      sentWishes: homeBirthdayContext.sentWishes || [],
+      birthdayDirectory: homeBirthdayContext.birthdayDirectory || []
+    };
+
+    applyCentralBirthdayHero(!!actualIsBirthday, name || 'Pengguna');
+    renderCentralMiniInfo(!!actualIsBirthday);
+
     const hasBirthday = rows.length > 0;
     const section = document.getElementById('dashboardBirthdaySection');
     const messagePanel = document.getElementById('birthdayMessagePanel');
     const inboxPanel = document.getElementById('birthdayInboxPanel');
     if (section) {
       section.classList.toggle('hidden', !hasBirthday);
-      section.classList.toggle('is-birthday-user', !!isBirthday);
-      section.classList.toggle('is-non-birthday-user', !isBirthday);
+      section.classList.toggle('is-birthday-user', !!actualIsBirthday);
+      section.classList.toggle('is-non-birthday-user', !actualIsBirthday);
     }
-    if (messagePanel) messagePanel.classList.toggle('hidden', !hasBirthday || !!isBirthday);
-    if (inboxPanel) inboxPanel.classList.toggle('hidden', !hasBirthday || !isBirthday);
+    if (messagePanel) messagePanel.classList.toggle('hidden', !hasBirthday || !!actualIsBirthday);
+    if (inboxPanel) inboxPanel.classList.toggle('hidden', !hasBirthday || !actualIsBirthday);
     if (!hasBirthday) {
       html('birthdayTodayCard', '');
       html('birthdayMessageCard', '');
@@ -1024,15 +1175,15 @@
       return;
     }
     const list = rows.slice(0, 8).map(function (r) {
-      const nama = r.nama || r.label || r.Nama || 'Karyawan APJ';
+      const nama = getBirthdayRowName(r) || 'Karyawan APJ';
       return '<div class="birthday-person"><b>🎂 ' + esc(nama) + '</b></div>';
     }).join('');
     html('birthdayTodayCard', '<div class="birthday-highlight"><b>Ulang tahun hari ini</b><span>' + rows.length + ' keluarga APJ berulang tahun.</span></div><div class="birthday-person-list">' + list + '</div>');
-    if (isBirthday) {
+    if (actualIsBirthday) {
       html('birthdayMessageCard', '');
       renderBirthdayInbox(true, name);
     } else {
-      renderBirthdayMessageForm(rows);
+      renderBirthdayMessageForm(rows.filter(function (r) { return !isCurrentUserBirthdayRow(r, name); }));
       html('birthdayInboxCard', '');
     }
   }
@@ -1198,7 +1349,7 @@
 
     const targetName = getBirthdayRowName(target) || 'Karyawan APJ';
     const targetUsername = resolveBirthdayTargetUsername(target, targetName);
-    const senderName = selfName || (currentSession && (currentSession.name || currentSession.nama || currentSession.username)) || 'Rekan APJ';
+    const senderName = (currentSession && (currentSession.name || currentSession.nama || currentSession.username)) || 'Rekan APJ';
 
     const newWish = {
       usernameUlangTahun: targetUsername || '',
@@ -1411,7 +1562,7 @@
 
   function getTodayBirthdayRows(calendar, name, isBirthday) {
     const today = new Date().getDate();
-    const rows = arr((calendar || {}).ulangTahun).filter(function (r) { return getCalendarDayValue(r) === today; }).slice();
+    const rows = arr((calendar || {}).ulangTahun).filter(isCalendarRowToday).slice();
     if (isBirthday && !rows.some(function (r) { return normalizeNameKey(r.nama || r.label || r.Nama || '') === normalizeNameKey(name); })) {
       rows.unshift({ nama: name || 'Karyawan APJ' });
     }

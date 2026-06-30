@@ -3215,3 +3215,41 @@ body[data-theme="light"] .apj-dashboard-v3[data-dashboard-mode="central"] .dashb
     grid-column:1;
   }
 }
+
+/* APP-V.4.6_FIX1 — Calendar Month/Year Controls */
+.calendar-nav-controls{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:10px 0 8px;
+}
+.calendar-nav-btn,.calendar-nav-today,.calendar-nav-select{
+  border:1px solid var(--border);
+  background:var(--surface-solid);
+  color:var(--text);
+  border-radius:14px;
+  min-height:34px;
+  font-size:12px;
+  font-weight:900;
+  box-shadow:var(--shadow-soft);
+}
+.calendar-nav-btn{
+  width:36px;
+  padding:0;
+  font-size:20px;
+  line-height:1;
+}
+.calendar-nav-today{padding:0 12px;}
+.calendar-nav-select{padding:0 10px;min-width:112px;}
+html[data-theme="light"] .calendar-nav-btn,
+html[data-theme="light"] .calendar-nav-today,
+html[data-theme="light"] .calendar-nav-select{
+  background:#fff;
+  color:#0f172a;
+}
+@media (max-width:640px){
+  .calendar-nav-controls{gap:6px;}
+  .calendar-nav-select{min-width:96px;flex:1;}
+  .calendar-nav-today{flex:1;}
+}

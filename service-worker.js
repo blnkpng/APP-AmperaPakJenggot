@@ -2,7 +2,7 @@
    Safe service worker: caches only local static assets/icons.
    HTML pages and Google Apps Script API calls remain network/live. */
 
-const APJ_PWA_VERSION = 'APP-V.4.6-PWA-APP-MODE';
+const APJ_PWA_VERSION = 'APP-V.4.6-FIX1-DASHBOARD';
 const APJ_STATIC_CACHE = 'apj-static-' + APJ_PWA_VERSION;
 
 const APJ_CORE_ASSETS = [
