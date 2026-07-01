@@ -3592,3 +3592,198 @@ body.apj-produksi-v84 .batch-tables-grid > .prep-section-card:first-child .prep-
   }
   body.apj-produksi-v85 .prep-remove-btn{width:32px!important;height:32px!important;min-width:32px!important;}
 }
+
+
+/* APJ PRODUKSI V86 - Mobile ultra compact, informasi tetap jelas */
+@media(max-width: 768px){
+  body.apj-produksi-v86 .page-scroll{
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+
+  body.apj-produksi-v86 .batch-card-body{
+    padding:10px!important;
+  }
+
+  body.apj-produksi-v86 .batch-card-head{
+    padding:12px!important;
+  }
+
+  body.apj-produksi-v86 .batch-actions{
+    gap:8px!important;
+  }
+
+  body.apj-produksi-v86 .batch-actions button{
+    min-height:38px!important;
+    border-radius:14px!important;
+    font-size:12px!important;
+  }
+
+  body.apj-produksi-v86 .prep-section-card.batch-inner-card{
+    border-radius:18px!important;
+  }
+
+  body.apj-produksi-v86 .prep-section-head{
+    padding:11px 12px!important;
+    display:grid!important;
+    grid-template-columns:1fr auto!important;
+    gap:8px!important;
+    align-items:center!important;
+  }
+
+  body.apj-produksi-v86 .prep-section-label{
+    font-size:9px!important;
+    line-height:1!important;
+  }
+
+  body.apj-produksi-v86 .prep-section-head h3{
+    font-size:14px!important;
+    line-height:1.1!important;
+  }
+
+  body.apj-produksi-v86 .prep-section-head button{
+    width:auto!important;
+    min-height:32px!important;
+    border-radius:12px!important;
+    padding:0 10px!important;
+    font-size:12px!important;
+    white-space:nowrap!important;
+  }
+
+  body.apj-produksi-v86 .prep-section-head button::first-letter{
+    font-size:14px!important;
+  }
+
+  body.apj-produksi-v86 .prep-table tbody tr.prep-row{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 58px 78px 58px 78px 38px!important;
+    grid-template-areas:
+      "nama nama nama nama nama nama"
+      "stok qty mult total total aksi"!important;
+    gap:7px!important;
+    align-items:end!important;
+    padding:10px!important;
+    border-bottom:1px solid rgba(148,163,184,.18)!important;
+  }
+
+  body.apj-produksi-v86 .prep-table tbody td{
+    padding:0!important;
+    min-width:0!important;
+    text-align:left!important;
+  }
+
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(1){grid-area:nama!important;}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(2){grid-area:stok!important;}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(3){grid-area:qty!important;}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(4){grid-area:mult!important;}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(5){grid-area:total!important;}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(6){grid-area:aksi!important;}
+
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(2)::before,
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(3)::before,
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(4)::before,
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(5)::before{
+    display:block!important;
+    margin:0 0 3px!important;
+    font-size:8.5px!important;
+    line-height:1!important;
+    font-weight:950!important;
+    letter-spacing:.04em!important;
+    color:var(--muted,#94a3b8)!important;
+    text-transform:uppercase!important;
+    white-space:nowrap!important;
+  }
+
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(2)::before{content:"Stok";}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(3)::before{content:"Keluar";}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(4)::before{content:"×";}
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(5)::before{content:"Total";}
+
+  body.apj-produksi-v86 .prep-item-select{
+    height:38px!important;
+    min-height:38px!important;
+    border-radius:13px!important;
+    padding:6px 9px!important;
+    font-size:12.5px!important;
+    font-weight:900!important;
+  }
+
+  body.apj-produksi-v86 .prep-qty-input,
+  body.apj-produksi-v86 .prep-multiplier-input,
+  body.apj-produksi-v86 .prep-total-output{
+    height:34px!important;
+    min-height:34px!important;
+    border-radius:12px!important;
+    padding:0 6px!important;
+    font-size:12.5px!important;
+    font-weight:900!important;
+  }
+
+  body.apj-produksi-v86 .prep-multiplier-input{
+    font-size:11.5px!important;
+  }
+
+  body.apj-produksi-v86 .prep-multiplier-input::placeholder{
+    font-size:10px!important;
+  }
+
+  body.apj-produksi-v86 .virtual-stock{
+    font-size:15px!important;
+    line-height:1!important;
+  }
+
+  body.apj-produksi-v86 .prep-table tbody td:nth-child(2) p{
+    margin-top:3px!important;
+    font-size:10px!important;
+    line-height:1!important;
+  }
+
+  body.apj-produksi-v86 .prep-remove-btn{
+    width:34px!important;
+    height:34px!important;
+    min-width:34px!important;
+    border-radius:12px!important;
+    font-size:18px!important;
+    margin:0!important;
+  }
+
+  /* Produk jadi: hanya 4 kolom, tetap compact */
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody tr.prep-row{
+    grid-template-columns:minmax(0,1fr) 62px 90px 38px!important;
+    grid-template-areas:
+      "nama nama nama nama"
+      "stok qty qty aksi"!important;
+  }
+
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody td:nth-child(1){grid-area:nama!important;}
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody td:nth-child(2){grid-area:stok!important;}
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody td:nth-child(3){grid-area:qty!important;}
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody td:nth-child(4){grid-area:aksi!important;}
+
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody td:nth-child(2)::before{content:"Stok";}
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody td:nth-child(3)::before{content:"Masuk";}
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody td:nth-child(4)::before{content:"";display:none!important;}
+}
+
+/* Layar super kecil: angka tetap masuk, tidak jebol */
+@media(max-width: 390px){
+  body.apj-produksi-v86 .prep-table tbody tr.prep-row{
+    grid-template-columns:minmax(0,1fr) 52px 70px 52px 70px 34px!important;
+    gap:6px!important;
+    padding:9px!important;
+  }
+
+  body.apj-produksi-v86 .batch-tables-grid > .prep-section-card:last-child .prep-table tbody tr.prep-row{
+    grid-template-columns:minmax(0,1fr) 56px 78px 34px!important;
+  }
+
+  body.apj-produksi-v86 .prep-qty-input,
+  body.apj-produksi-v86 .prep-multiplier-input,
+  body.apj-produksi-v86 .prep-total-output{
+    font-size:11.5px!important;
+  }
+
+  body.apj-produksi-v86 .virtual-stock{
+    font-size:14px!important;
+  }
+}
