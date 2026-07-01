@@ -3106,3 +3106,139 @@ body.apj-produksi-v82 .prep-section-head button{min-height:36px!important;border
   body.apj-produksi-v82 .prep-table tbody td{padding:.42rem 0!important;text-align:left!important;}
   body.apj-produksi-v82 .prep-item-select,body.apj-produksi-v82 .prep-qty-input,body.apj-produksi-v82 .prep-multiplier-input,body.apj-produksi-v82 .prep-total-output{width:100%!important;max-width:100%!important;}
 }
+
+
+/* APJ PRODUKSI V83 - Compact columns: rapi tanpa scroll horizontal */
+body.apj-produksi-v83 .batch-tables-grid{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) minmax(0,.82fr)!important;
+  gap:14px!important;
+  align-items:start!important;
+}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card{min-width:0!important;width:100%!important;}
+body.apj-produksi-v83 .prep-table-shell{overflow:visible!important;overflow-x:hidden!important;overflow-y:visible!important;}
+body.apj-produksi-v83 .prep-table{width:100%!important;min-width:0!important;table-layout:fixed!important;}
+body.apj-produksi-v83 .prep-table thead th{
+  padding:9px 6px!important;
+  font-size:8.5px!important;
+  letter-spacing:.04em!important;
+  line-height:1.05!important;
+  white-space:normal!important;
+  text-align:center!important;
+}
+body.apj-produksi-v83 .prep-table thead th:first-child{text-align:left!important;}
+body.apj-produksi-v83 .prep-table tbody td{padding:9px 6px!important;vertical-align:middle!important;}
+
+/* BAHAN: Nama | Sisa | Jumlah | Pengalian | Total | Aksi */
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(1),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(1){width:25%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(2),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(2){width:11%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(3),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(3){width:17%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(4),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(4){width:13%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(5),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(5){width:18%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(6),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(6){width:7%!important;}
+
+/* HASIL: Nama | Stok | Jumlah | Aksi */
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(1),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(1){width:39%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(2),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(2){width:18%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(3),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(3){width:29%!important;}
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(4),
+body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(4){width:9%!important;}
+
+body.apj-produksi-v83 .prep-item-select{
+  height:36px!important;
+  min-height:36px!important;
+  border-radius:12px!important;
+  padding:6px 8px!important;
+  font-size:11px!important;
+  font-weight:850!important;
+}
+body.apj-produksi-v83 .prep-qty-input,
+body.apj-produksi-v83 .prep-multiplier-input,
+body.apj-produksi-v83 .prep-total-output{
+  height:36px!important;
+  min-height:36px!important;
+  border-radius:12px!important;
+  padding:0 6px!important;
+  font-size:12px!important;
+  font-weight:850!important;
+}
+body.apj-produksi-v83 .prep-multiplier-input::placeholder{font-size:10.5px!important;}
+body.apj-produksi-v83 .virtual-stock{font-size:12.5px!important;line-height:1.05!important;}
+body.apj-produksi-v83 .prep-table tbody td:nth-child(2) p{
+  font-size:9.5px!important;
+  margin-top:3px!important;
+  line-height:1.05!important;
+}
+body.apj-produksi-v83 .prep-remove-btn{
+  width:30px!important;
+  height:30px!important;
+  min-width:30px!important;
+  border-radius:11px!important;
+  font-size:17px!important;
+  margin:auto!important;
+}
+body.apj-produksi-v83 .prep-section-head{padding:11px 12px!important;}
+body.apj-produksi-v83 .prep-section-head h3{font-size:14px!important;}
+body.apj-produksi-v83 .prep-section-label{font-size:9px!important;}
+body.apj-produksi-v83 .prep-section-head button{
+  min-height:32px!important;
+  border-radius:12px!important;
+  padding:0 10px!important;
+  font-size:12px!important;
+}
+
+/* Kalau layar mengecil, turun jadi satu kolom, tetap tanpa scroll horizontal */
+@media(max-width:1180px){
+  body.apj-produksi-v83 .batch-tables-grid{grid-template-columns:1fr!important;}
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(1),
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(1){width:30%!important;}
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(2),
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(2){width:11%!important;}
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(3),
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(3){width:17%!important;}
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(4),
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(4){width:12%!important;}
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(5),
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(5){width:19%!important;}
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(6),
+  body.apj-produksi-v83 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(6){width:8%!important;}
+}
+
+/* HP tetap card mode */
+@media(max-width:768px){
+  body.apj-produksi-v83 .batch-tables-grid{grid-template-columns:1fr!important;}
+  body.apj-produksi-v83 .prep-table,
+  body.apj-produksi-v83 .prep-table thead,
+  body.apj-produksi-v83 .prep-table tbody,
+  body.apj-produksi-v83 .prep-table tr,
+  body.apj-produksi-v83 .prep-table th,
+  body.apj-produksi-v83 .prep-table td{
+    display:block!important;
+    width:100%!important;
+  }
+  body.apj-produksi-v83 .prep-table thead{display:none!important;}
+  body.apj-produksi-v83 .prep-table tbody tr{
+    padding:12px!important;
+    border-bottom:1px solid rgba(148,163,184,.18)!important;
+  }
+  body.apj-produksi-v83 .prep-table tbody td{
+    padding:.38rem 0!important;
+    text-align:left!important;
+  }
+  body.apj-produksi-v83 .prep-item-select,
+  body.apj-produksi-v83 .prep-qty-input,
+  body.apj-produksi-v83 .prep-multiplier-input,
+  body.apj-produksi-v83 .prep-total-output{
+    width:100%!important;
+    max-width:100%!important;
+  }
+}
