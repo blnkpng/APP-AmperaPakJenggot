@@ -1,7 +1,9 @@
-/* APJ PRODUKSI V70
+/* APJ PRODUKSI V71
  * - Batch Produksi Harian: banyak resep dalam satu proses simpan.
  * - Stok bahan tersinkron sementara sebelum disimpan.
  *   Contoh telur stok 5, dipakai 1 pada produksi pertama, baris berikutnya otomatis membaca sisa 4.
+ * - V71: bahan yang satu keluarga stok ikut berkurang otomatis lintas kartu produksi.
+ *   Contoh Ayam 8 Premix dan Ayam 8 Kremes bisa memakai pool Ayam 8 yang sama.
  * - Dropdown tetap menampilkan nama bahan/nama hasil saja.
  * - Menyimpan gabungan bahanRows dan produksiRows ke backend simpanProduksi.
  */
@@ -237,17 +239,35 @@
 
   function collectItemsFromProductionRecipes(recipes) {
     const map = {};
-    function addItem(id, nama, kategori, satuan, stok) {
+    function addItem(id, nama, kategori, satuan, stok, meta) {
       id = String(id || '').trim();
       nama = String(nama || '').trim();
       if (!id || !nama) return;
+      meta = meta || {};
+      const parentId = String(
+        meta.parentId || meta.parent || meta.parentItem || meta.parentItemId ||
+        meta.parentKonversiDari || meta.konversiDari || meta['Parent/Konversi Dari'] ||
+        meta['Parent'] || meta['ID Parent'] || meta['Grup Stok'] || meta.grupStok ||
+        meta.stockGroup || meta.groupKey || ''
+      ).trim();
+      const stockGroup = String(meta.stockGroup || meta.grupStok || meta.groupKey || meta['Grup Stok'] || '').trim();
       if (!map[id]) {
-        map[id] = { id, nama, kategori: kategori || '', satuan: satuan || '-', stokTersedia: Number(stok || 0) || 0 };
+        map[id] = {
+          id,
+          nama,
+          kategori: kategori || '',
+          satuan: satuan || '-',
+          stokTersedia: Number(stok || 0) || 0,
+          parentId,
+          stockGroup
+        };
       } else {
         if (!map[id].nama && nama) map[id].nama = nama;
         if (!map[id].kategori && kategori) map[id].kategori = kategori;
         if ((!map[id].satuan || map[id].satuan === '-') && satuan) map[id].satuan = satuan;
         if (!Number(map[id].stokTersedia) && Number(stok)) map[id].stokTersedia = Number(stok) || 0;
+        if (!map[id].parentId && parentId) map[id].parentId = parentId;
+        if (!map[id].stockGroup && stockGroup) map[id].stockGroup = stockGroup;
       }
     }
     (recipes || []).forEach(r => {
@@ -256,20 +276,22 @@
         r.produksi || r.namaProduksi || r.namaHasil || r.namaProdukJadi || r['Nama Hasil'] || r['Nama Produk Jadi'] || r['Nama Produk'],
         r.kategoriHasil || r['Kategori Hasil'] || 'Produk Jadi',
         r.satuanProduksi || r.satuanHasil || r.satuan || r['Satuan Hasil'] || '-',
-        r.stokTersedia || r.stok || 0
+        r.stokTersedia || r.stok || 0,
+        r
       );
       addItem(
         r.idBahan || r.idItemBahan || r['ID Bahan'] || r['ID Item Bahan'],
         r.bahanBaku || r.namaBahan || r['Nama Bahan'] || r['Bahan'],
         r.kategoriBahan || r['Kategori Bahan'] || 'Bahan Produksi',
         r.satuanBahan || r.satuanStok || r['Satuan Bahan'] || '-',
-        r.stokBahan || r.stokTersediaBahan || 0
+        r.stokBahan || r.stokTersediaBahan || 0,
+        r
       );
       (Array.isArray(r.hasil) ? r.hasil : []).forEach(h => {
-        addItem(h.idItem || h.idHasil || h.idProduksi || h.id, h.nama || h.namaHasil || h.produksi, h.kategoriHasil || h.kategori || 'Produk Jadi', h.satuanHasil || h.satuanProduksi || h.satuan || '-', h.stokTersedia || h.stok || 0);
+        addItem(h.idItem || h.idHasil || h.idProduksi || h.id, h.nama || h.namaHasil || h.produksi, h.kategoriHasil || h.kategori || 'Produk Jadi', h.satuanHasil || h.satuanProduksi || h.satuan || '-', h.stokTersedia || h.stok || 0, h);
       });
       (Array.isArray(r.bahan) ? r.bahan : []).forEach(b => {
-        addItem(b.idBahan || b.idItem || b.id, b.bahanBaku || b.namaBahan || b.nama, b.kategoriBahan || b.kategori || 'Bahan Produksi', b.satuanBahan || b.satuanStok || b.satuan || '-', b.stokTersedia || b.stok || 0);
+        addItem(b.idBahan || b.idItem || b.id, b.bahanBaku || b.namaBahan || b.nama, b.kategoriBahan || b.kategori || 'Bahan Produksi', b.satuanBahan || b.satuanStok || b.satuan || '-', b.stokTersedia || b.stok || 0, b);
       });
     });
     return Object.values(map);
@@ -320,7 +342,9 @@
       kategori: String(row.kategori || row['Kategori'] || '').trim(),
       satuan: String(row.satuanStok || row.satuanProduksi || row.satuan || row['Satuan Stok'] || row['Satuan Produksi'] || row['Satuan'] || '-').trim(),
       stok: Number(row.stokTersedia ?? row.stokAkhir ?? row['Stok Akhir'] ?? row.stok ?? 0) || 0,
-      status: String(row.status || row['Status'] || '').trim()
+      status: String(row.status || row['Status'] || '').trim(),
+      parentId: String(row.parentId || row.parent || row.parentItem || row.parentItemId || row.parentKonversiDari || row.konversiDari || row['Parent/Konversi Dari'] || row['Parent'] || row['ID Parent'] || '').trim(),
+      stockGroup: String(row.stockGroup || row.grupStok || row.groupKey || row['Grup Stok'] || '').trim()
     };
   }
 
@@ -621,22 +645,78 @@
 
   function getItemStock(idItem) { return Number((STATE.itemById[idItem] || {}).stok || 0) || 0; }
 
-  function sumQtyForItem(idItem, type) {
+  function normalizeStockKeyText(value) {
+    return String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/&/g, ' DAN ')
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  function getItemStockKey(idItem, type) {
+    idItem = String(idItem || '').trim();
+    if (!idItem) return '';
+
+    // Hasil produksi tetap dihitung per item. Yang disatukan hanya bahan keluar.
+    if (type !== 'bahan') return 'ITEM:' + idItem;
+
+    const item = STATE.itemById[idItem] || {};
+    const explicitGroup = normalizeStockKeyText(item.stockGroup || item.parentId);
+    if (explicitGroup) return 'GROUP:' + explicitGroup;
+
+    const nameKey = normalizeStockKeyText(item.nama || '');
+    // Rule praktis APJ: Ayam 8 Premix dan Ayam 8 Kremes berasal dari pool ayam 8 yang sama.
+    // Ayam 11 Premix dan Ayam 11 Kremes berasal dari pool ayam 11 yang sama.
+    // Kalau nanti MASTER_ITEM sudah punya Parent/Konversi Dari atau Grup Stok, rule eksplisit di atas otomatis menang.
+    if (nameKey.indexOf('AYAM') >= 0) {
+      if (/(^|_)11($|_)/.test(nameKey)) return 'AYAM_POTONG:11';
+      if (/(^|_)8($|_)/.test(nameKey)) return 'AYAM_POTONG:8';
+    }
+
+    return 'ITEM:' + idItem;
+  }
+
+  function getStockBaseForKey(stockKey, type) {
+    if (!stockKey) return 0;
+    if (stockKey.indexOf('ITEM:') === 0 || type !== 'bahan') {
+      return getItemStock(stockKey.replace(/^ITEM:/, ''));
+    }
+
+    let found = false;
+    let maxStock = 0;
+    STATE.items.forEach(item => {
+      if (getItemStockKey(item.id, 'bahan') !== stockKey) return;
+      const stok = Number(item.stok || 0) || 0;
+      if (!found || stok > maxStock) maxStock = stok;
+      found = true;
+    });
+    return found ? maxStock : 0;
+  }
+
+  function sumQtyForStockKey(stockKey, type) {
     let total = 0;
     STATE.batches.forEach(batch => {
       const rows = type === 'bahan' ? batch.bahanRows : batch.hasilRows;
       rows.forEach(row => {
-        if (row.idItem === idItem) total += Number(row.qty) || 0;
+        if (!row.idItem) return;
+        if (getItemStockKey(row.idItem, type) === stockKey) total += Number(row.qty) || 0;
       });
     });
     return roundNumber(total);
   }
 
+  function sumQtyForItem(idItem, type) {
+    const stockKey = getItemStockKey(idItem, type);
+    return sumQtyForStockKey(stockKey, type);
+  }
+
   function getVirtualStock(idItem, type) {
     if (!idItem) return '';
-    const base = getItemStock(idItem);
-    if (type === 'hasil') return roundNumber(base + sumQtyForItem(idItem, 'hasil'));
-    return roundNumber(base - sumQtyForItem(idItem, 'bahan'));
+    const stockKey = getItemStockKey(idItem, type);
+    const base = getStockBaseForKey(stockKey, type);
+    if (type === 'hasil') return roundNumber(base + sumQtyForStockKey(stockKey, 'hasil'));
+    return roundNumber(base - sumQtyForStockKey(stockKey, 'bahan'));
   }
 
   function updateVirtualStockDisplays() {
@@ -738,16 +818,28 @@
 
   function getShortageList() {
     const totals = {};
+    const labels = {};
+    const satuan = {};
     STATE.batches.forEach(batch => batch.bahanRows.forEach(row => {
       if (!row.idItem) return;
-      totals[row.idItem] = (totals[row.idItem] || 0) + (Number(row.qty) || 0);
+      const stockKey = getItemStockKey(row.idItem, 'bahan');
+      const item = STATE.itemById[row.idItem] || {};
+      totals[stockKey] = (totals[stockKey] || 0) + (Number(row.qty) || 0);
+      if (!labels[stockKey]) labels[stockKey] = buildStockKeyLabel(stockKey, item);
+      if (!satuan[stockKey]) satuan[stockKey] = item.satuan || '';
     }));
-    return Object.keys(totals).map(id => {
-      const item = STATE.itemById[id] || {};
-      const stok = Number(item.stok || 0) || 0;
-      const qty = Number(totals[id] || 0) || 0;
-      return { id, nama: item.nama || id, satuan: item.satuan || '', stok, qty, kurang: roundNumber(qty - stok) };
+    return Object.keys(totals).map(stockKey => {
+      const stok = getStockBaseForKey(stockKey, 'bahan');
+      const qty = Number(totals[stockKey] || 0) || 0;
+      return { id: stockKey, nama: labels[stockKey] || stockKey, satuan: satuan[stockKey] || '', stok, qty, kurang: roundNumber(qty - stok) };
     }).filter(x => x.kurang > 0);
+  }
+
+  function buildStockKeyLabel(stockKey, item) {
+    if (stockKey === 'AYAM_POTONG:8') return 'Ayam Potong 8';
+    if (stockKey === 'AYAM_POTONG:11') return 'Ayam Potong 11';
+    if (stockKey.indexOf('GROUP:') === 0) return item && item.parentId ? item.parentId : stockKey.replace(/^GROUP:/, '');
+    return (item && item.nama) || stockKey.replace(/^ITEM:/, '');
   }
 
   function updateKpi() {
