@@ -3574,3 +3574,109 @@ body.apj-theme-light.apj-produksi-v72 .btn-orange{
     grid-template-columns:1fr!important;
   }
 }
+
+
+/* =========================================================
+   APJ PRODUKSI V76 - Mobile row: Nama Produk | Stok | Pakai/Masuk | Hapus
+   Tujuan: dalam split 2 kolom, isi baris lebih rapat dan tidak bocor kanan.
+   ========================================================= */
+@media (max-width: 640px){
+  body.apj-produksi-v76 .prep-table tbody tr.prep-row{
+    grid-template-columns:minmax(42px,.82fr) minmax(50px,1fr) 28px!important;
+    grid-template-areas:
+      "item item item"
+      "stock qty del"!important;
+    gap:6px!important;
+    padding:8px!important;
+    align-items:end!important;
+  }
+
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(1),
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(2),
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(3){
+    min-width:0!important;
+    overflow:hidden!important;
+  }
+
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(1)::before,
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(2)::before,
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(3)::before{
+    display:block!important;
+    margin:0 0 4px!important;
+    font-size:7.3px!important;
+    line-height:1!important;
+    letter-spacing:.04em!important;
+    text-transform:uppercase!important;
+    font-weight:950!important;
+    color:#6b7d98!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(1)::before{content:'Nama produk';}
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(2)::before{content:'Stok saat ini';}
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(3)::before{content:'Stok dipakai';}
+
+  /* Kolom kanan adalah hasil masuk, label qty-nya beda supaya karyawan tidak rancu. */
+  body.apj-produksi-v76 .batch-inner-card:nth-child(2) .prep-table tbody td:nth-child(2)::before{content:'Stok setelah';}
+  body.apj-produksi-v76 .batch-inner-card:nth-child(2) .prep-table tbody td:nth-child(3)::before{content:'Stok masuk';}
+
+  body.apj-produksi-v76 .prep-item-select{
+    height:38px!important;
+    min-height:38px!important;
+    border-radius:13px!important;
+    padding:7px 24px 7px 9px!important;
+    font-size:11px!important;
+    font-weight:850!important;
+  }
+
+  body.apj-produksi-v76 .virtual-stock{
+    display:block!important;
+    font-size:12.5px!important;
+    line-height:1.05!important;
+    max-width:100%!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(2) p{
+    margin-top:2px!important;
+    font-size:8.5px!important;
+    line-height:1!important;
+    white-space:nowrap!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+  }
+
+  body.apj-produksi-v76 .prep-qty-input{
+    height:36px!important;
+    min-height:36px!important;
+    border-radius:13px!important;
+    padding:6px 6px!important;
+    font-size:12.5px!important;
+    text-align:center!important;
+  }
+
+  body.apj-produksi-v76 .prep-table tbody td:nth-child(4){
+    align-self:end!important;
+    justify-self:center!important;
+  }
+
+  body.apj-produksi-v76 .prep-remove-btn{
+    width:28px!important;
+    height:28px!important;
+    min-width:28px!important;
+    min-height:28px!important;
+    border-radius:10px!important;
+    font-size:17px!important;
+  }
+}
+
+/* Kalau HP sangat sempit dan layout jadi 1 kolom, row tetap model 3 kolom ringkas. */
+@media (max-width: 359px){
+  body.apj-produksi-v76 .prep-table tbody tr.prep-row{
+    grid-template-columns:minmax(54px,.8fr) minmax(70px,1fr) 30px!important;
+  }
+}
