@@ -2992,3 +2992,67 @@ body.apj-produksi-v80 .produksi-table td:nth-child(5){
   body.apj-produksi-v80 .prep-multiplier-input,
   body.apj-produksi-v80 .prep-total-output{max-width:100%!important;width:100%!important;}
 }
+
+
+/* APJ PRODUKSI V81 - Rapikan tabel pengalian & total desktop */
+body.apj-produksi-v81 .batch-tables-grid{
+  display:grid!important;
+  grid-template-columns:minmax(0,1.28fr) minmax(340px,.92fr)!important;
+  gap:16px!important;
+  align-items:start!important;
+}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card{min-width:0!important;}
+body.apj-produksi-v81 .prep-table-shell{
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table{
+  table-layout:fixed!important;
+  min-width:860px!important;
+}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table{
+  table-layout:fixed!important;
+  min-width:620px!important;
+}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(1),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(1){width:33%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(2),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(2){width:12%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(3),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(3){width:17%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(4),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(4){width:12%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(5),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(5){width:18%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table th:nth-child(6),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table td:nth-child(6){width:8%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(1),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(1){width:42%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(2),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(2){width:20%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(3),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(3){width:24%!important;}
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table th:nth-child(4),
+body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table td:nth-child(4){width:14%!important;}
+body.apj-produksi-v81 .prep-table thead th{padding:12px 12px!important;text-align:center!important;}
+body.apj-produksi-v81 .prep-table thead th:first-child{text-align:left!important;}
+body.apj-produksi-v81 .prep-table tbody td{padding:14px 12px!important;}
+body.apj-produksi-v81 .prep-item-select{min-width:0!important;width:100%!important;}
+body.apj-produksi-v81 .prep-qty-input,
+body.apj-produksi-v81 .prep-multiplier-input,
+body.apj-produksi-v81 .prep-total-output{width:100%!important;max-width:none!important;}
+body.apj-produksi-v81 .prep-remove-btn{margin:auto!important;}
+body.apj-produksi-v81 .virtual-stock{font-size:14px!important;}
+body.apj-produksi-v81 .prep-table tbody td:nth-child(2) p{font-size:12px!important;}
+body.apj-produksi-v81 .prep-total-output{font-weight:950!important;}
+@media(max-width: 1360px){
+  body.apj-produksi-v81 .batch-tables-grid{grid-template-columns:1fr!important;}
+  body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table{min-width:860px!important;}
+  body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table{min-width:620px!important;}
+}
+@media(max-width:768px){
+  body.apj-produksi-v81 .batch-tables-grid{grid-template-columns:1fr!important;}
+  body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:first-child .prep-table,
+  body.apj-produksi-v81 .batch-tables-grid > .prep-section-card:last-child .prep-table{min-width:0!important;}
+}
