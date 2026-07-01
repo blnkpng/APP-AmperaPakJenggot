@@ -486,9 +486,10 @@
     setInfo('Produksi manual ditambahkan. Pilih bahan dan hasil sesuai kondisi nyata di dapur.');
   }
 
-  function makeRow(idItem, qty, catatan) {
+  function makeRow(idItem, qty, catatan, multiplier) {
     const cleanQty = qty === '' || qty === null || typeof qty === 'undefined' ? '' : Number(qty || 0);
-    return { uid: makeUid('ROW'), idItem: idItem || '', qty: cleanQty, catatan: catatan || '' };
+    const cleanMultiplier = multiplier === '' || multiplier === null || typeof multiplier === 'undefined' ? '' : Number(multiplier || 0);
+    return { uid: makeUid('ROW'), idItem: idItem || '', qty: cleanQty, multiplier: cleanMultiplier, catatan: catatan || '' };
   }
 
   function makeUid(prefix) { return prefix + '-' + Date.now() + '-' + Math.random().toString(16).slice(2); }
@@ -533,7 +534,7 @@
               <button class="btn-slate px-4 py-2 text-sm" onclick="addBatchRow('${batch.uid}','bahan')" type="button">+ Tambah Bahan</button>
             </div>
             <div class="table-shell prep-table-shell"><table class="prep-table produksi-table w-full text-left border-collapse">
-              <thead><tr class="thead-row text-xs uppercase tracking-wider"><th class="p-4">Nama Bahan</th><th class="p-4 w-[128px] text-center">Sisa Stok</th><th class="p-4 w-[150px] text-center">Jumlah Keluar</th><th class="p-4 w-[86px] text-center action-col">Aksi</th></tr></thead>
+              <thead><tr class="thead-row text-xs uppercase tracking-wider"><th class="p-4">Nama Bahan</th><th class="p-4 w-[128px] text-center">Sisa Stok</th><th class="p-4 w-[150px] text-center">Jumlah Keluar</th><th class="p-4 w-[118px] text-center">Pengalian</th><th class="p-4 w-[150px] text-center">Total</th><th class="p-4 w-[86px] text-center action-col">Aksi</th></tr></thead>
               <tbody>${renderBatchRows(batch, 'bahan')}</tbody>
             </table></div>
           </div>
@@ -555,13 +556,28 @@
   function renderBatchRows(batch, type) {
     const rows = type === 'bahan' ? batch.bahanRows : batch.hasilRows;
     if (!rows.length) {
-      return `<tr><td class="p-8 text-center text-slate-500" colspan="4">${type === 'bahan' ? 'Belum ada bahan keluar.' : 'Belum ada hasil masuk.'}</td></tr>`;
+      return `<tr><td class="p-8 text-center text-slate-500" colspan="${type === 'bahan' ? '6' : '4'}">${type === 'bahan' ? 'Belum ada bahan keluar.' : 'Belum ada hasil masuk.'}</td></tr>`;
     }
     return rows.map(row => {
       const item = STATE.itemById[row.idItem] || {};
       const select = buildItemSelect(type, batch.uid, row.uid, row.idItem);
       const stockValue = row.idItem ? getVirtualStock(row.idItem, type) : null;
       const stockClass = Number(stockValue) < 0 ? 'stock-negative' : '';
+      if (type === 'bahan') {
+        const totalValue = getEffectiveRowQty(row, type);
+        const totalDisplay = hasQtyValue(row.qty) ? formatNumber(totalValue) : '';
+        return `<tr class="prep-row">
+          <td class="p-4 align-top">${select}</td>
+          <td class="p-4 text-center align-middle">
+            <strong class="virtual-stock ${stockClass}" data-stock-type="${type}" data-stock-item="${escapeHtml(row.idItem)}">${row.idItem ? formatNumber(stockValue) : '-'}</strong>
+            <p class="text-xs text-slate-500">${escapeHtml(item.satuan || '-')}</p>
+          </td>
+          <td class="p-4 text-center align-middle"><input class="prep-qty-input" type="number" min="0" step="0.01" value="${row.qty === '' || row.qty === null || typeof row.qty === 'undefined' ? '' : escapeHtml(row.qty)}" oninput="updateBatchQty('${batch.uid}','${type}','${row.uid}',this.value)"/></td>
+          <td class="p-4 text-center align-middle"><input class="prep-qty-input prep-multiplier-input" type="number" min="0" step="0.01" placeholder="Auto 1" value="${row.multiplier === '' || row.multiplier === null || typeof row.multiplier === 'undefined' ? '' : escapeHtml(row.multiplier)}" oninput="updateBatchMultiplier('${batch.uid}','${row.uid}',this.value)"/></td>
+          <td class="p-4 text-center align-middle"><input class="prep-qty-input prep-total-output" type="text" readonly tabindex="-1" data-row-uid="${escapeHtml(row.uid)}" data-batch-uid="${escapeHtml(batch.uid)}" value="${escapeHtml(totalDisplay)}"/></td>
+          <td class="p-4 text-center align-middle"><button class="prep-remove-btn" type="button" onclick="removeBatchRow('${batch.uid}','${type}','${row.uid}')">×</button></td>
+        </tr>`;
+      }
       return `<tr class="prep-row">
         <td class="p-4 align-top">${select}</td>
         <td class="p-4 text-center align-middle">
@@ -572,6 +588,28 @@
         <td class="p-4 text-center align-middle"><button class="prep-remove-btn" type="button" onclick="removeBatchRow('${batch.uid}','${type}','${row.uid}')">×</button></td>
       </tr>`;
     }).join('');
+  }
+
+  function hasQtyValue(value) {
+    return !(value === '' || value === null || typeof value === 'undefined');
+  }
+
+  function normalizeMultiplierValue(value) {
+    if (value === '' || value === null || typeof value === 'undefined') return '';
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : '';
+  }
+
+  function getRowMultiplier(row, type) {
+    if (type !== 'bahan') return 1;
+    const m = normalizeMultiplierValue(row && row.multiplier);
+    return m === '' ? 1 : m;
+  }
+
+  function getEffectiveRowQty(row, type) {
+    const qty = Number((row && row.qty) || 0) || 0;
+    if (type !== 'bahan') return roundNumber(qty);
+    return roundNumber(qty * getRowMultiplier(row, type));
   }
 
   function buildItemSelect(type, batchUid, rowUid, selected) {
@@ -611,7 +649,7 @@
   function addBatchRow(batchUid, type) {
     const batch = getBatch(batchUid);
     if (!batch) return;
-    getBatchRows(batch, type).push(makeRow('', '', ''));
+    getBatchRows(batch, type).push(makeRow('', '', '', ''));
     renderBatches();
     updateKpi();
   }
@@ -632,6 +670,17 @@
     if (row) row.qty = String(value || '').trim() === '' ? '' : (Number(value || 0) || 0);
     updateKpi();
     updateVirtualStockDisplays();
+    updateComputedTotals();
+  }
+
+  function updateBatchMultiplier(batchUid, rowUid, value) {
+    const batch = getBatch(batchUid);
+    if (!batch) return;
+    const row = batch.bahanRows.find(r => r.uid === rowUid);
+    if (row) row.multiplier = normalizeMultiplierValue(String(value || '').trim() === '' ? '' : value);
+    updateKpi();
+    updateVirtualStockDisplays();
+    updateComputedTotals();
   }
 
   function removeBatchRow(batchUid, type, rowUid) {
@@ -700,7 +749,7 @@
       const rows = type === 'bahan' ? batch.bahanRows : batch.hasilRows;
       rows.forEach(row => {
         if (!row.idItem) return;
-        if (getItemStockKey(row.idItem, type) === stockKey) total += Number(row.qty) || 0;
+        if (getItemStockKey(row.idItem, type) === stockKey) total += getEffectiveRowQty(row, type);
       });
     });
     return roundNumber(total);
@@ -730,6 +779,18 @@
     });
   }
 
+  function updateComputedTotals() {
+    document.querySelectorAll('.prep-total-output').forEach(input => {
+      const rowUid = input.getAttribute('data-row-uid') || '';
+      const batchUid = input.getAttribute('data-batch-uid') || '';
+      const batch = getBatch(batchUid);
+      if (!batch) { input.value = ''; return; }
+      const row = batch.bahanRows.find(r => r.uid === rowUid);
+      if (!row || !hasQtyValue(row.qty)) { input.value = ''; return; }
+      input.value = formatNumber(getEffectiveRowQty(row, 'bahan'));
+    });
+  }
+
   async function simpanProduksi() {
     if (STATE.loading) return;
     const tanggal = (document.getElementById('tanggalInput') || {}).value || '';
@@ -744,13 +805,21 @@
 
     STATE.batches.forEach((batch, index) => {
       const batchName = batch.nama || ('Produksi ' + (index + 1));
-      const batchBahan = batch.bahanRows.filter(r => r.idItem && Number(r.qty) > 0).map(r => ({
-        idBahan: r.idItem,
-        idItem: r.idItem,
-        qtyKeluar: Number(r.qty) || 0,
-        qty: Number(r.qty) || 0,
-        keterangan: `Bahan produksi | ${batchName}` + (keteranganProses ? ' | ' + keteranganProses : '')
-      }));
+      const batchBahan = batch.bahanRows.filter(r => r.idItem && getEffectiveRowQty(r, 'bahan') > 0).map(r => {
+        const qtyDasar = Number(r.qty) || 0;
+        const pengalian = normalizeMultiplierValue(r.multiplier);
+        const totalKeluar = getEffectiveRowQty(r, 'bahan');
+        return ({
+          idBahan: r.idItem,
+          idItem: r.idItem,
+          qtyKeluar: totalKeluar,
+          qty: totalKeluar,
+          qtyDasar,
+          pengalian: pengalian === '' ? '' : pengalian,
+          total: totalKeluar,
+          keterangan: `Bahan produksi | ${batchName}` + (pengalian !== '' ? ` | ${formatNumber(qtyDasar)} x ${formatNumber(pengalian)} = ${formatNumber(totalKeluar)}` : '') + (keteranganProses ? ' | ' + keteranganProses : '')
+        });
+      });
       const batchHasil = batch.hasilRows.filter(r => r.idItem && Number(r.qty) > 0).map(r => ({
         idProduksi: r.idItem,
         idHasil: r.idItem,
@@ -824,7 +893,7 @@
       if (!row.idItem) return;
       const stockKey = getItemStockKey(row.idItem, 'bahan');
       const item = STATE.itemById[row.idItem] || {};
-      totals[stockKey] = (totals[stockKey] || 0) + (Number(row.qty) || 0);
+      totals[stockKey] = (totals[stockKey] || 0) + getEffectiveRowQty(row, 'bahan');
       if (!labels[stockKey]) labels[stockKey] = buildStockKeyLabel(stockKey, item);
       if (!satuan[stockKey]) satuan[stockKey] = item.satuan || '';
     }));
@@ -866,7 +935,7 @@
     let count = 0;
     STATE.batches.forEach(batch => {
       const rows = type === 'bahan' ? batch.bahanRows : batch.hasilRows;
-      rows.forEach(row => { if (row.idItem && Number(row.qty) > 0) count += 1; });
+      rows.forEach(row => { if (row.idItem && getEffectiveRowQty(row, type) > 0) count += 1; });
     });
     return count;
   }
@@ -875,7 +944,7 @@
     let total = 0;
     STATE.batches.forEach(batch => {
       const rows = type === 'bahan' ? batch.bahanRows : batch.hasilRows;
-      rows.forEach(row => { total += Number(row.qty) || 0; });
+      rows.forEach(row => { total += getEffectiveRowQty(row, type); });
     });
     return total;
   }
@@ -1107,6 +1176,7 @@
   window.addBatchRow = addBatchRow;
   window.updateBatchItem = updateBatchItem;
   window.updateBatchQty = updateBatchQty;
+  window.updateBatchMultiplier = updateBatchMultiplier;
   window.removeBatchRow = removeBatchRow;
   window.handleKeteranganChange = handleKeteranganChange;
   window.updateKpi = updateKpi;
