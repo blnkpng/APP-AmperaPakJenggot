@@ -3,7 +3,7 @@
   "short_name": "APJ",
   "description": "Aplikasi operasional Ampera Pak Jenggot untuk absensi dan inventori.",
   "id": "./index.html",
-  "start_url": "./index.html",
+  "start_url": "./index.html?apj_pwa=rotation_any_v79",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0f172a",
@@ -28,5 +28,10 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "display_override": [
+    "standalone",
+    "browser"
+  ],
+  "prefer_related_applications": false
 }
