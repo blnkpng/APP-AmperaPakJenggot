@@ -1,0 +1,2149 @@
+/**
+ * APJ CORE USER - Apps Script Pusat Login & User - APP-V.4.5 AUDIT ERROR HEALTH
+ * Versi awal untuk APJ_CORE_USER / APJ_PUSAT_USER
+ *
+ * Fungsi utama:
+ * - Login pusat untuk Inventori, Absensi, Keuangan, Dashboard APJ.
+ * - USER pusat dengan migrasi password PLAIN -> HASH otomatis saat login berhasil.
+ * - LEVEL_PERMISSION dinamis dari header sheet.
+ * - MODULE_ACCESS untuk sidebar/menu dinamis + Lock menu.
+ * - OUTLET pusat.
+ * - LOG_LOGIN audit login.
+ * - UCAPAN_ULANG_TAHUN untuk dashboard ulang tahun & doa karyawan.
+ *
+ * Cara pakai:
+ * 1. Tempel Code.gs ini di Apps Script yang terikat ke spreadsheet APJ_CORE_USER.
+ * 2. Pastikan nama sheet sama persis: USER, LEVEL_PERMISSION, MODUL_ACCESS, OUTLET, LOG_LOGIN, UCAPAN_ULANG_TAHUN.
+ * 3. Deploy sebagai Web App: Execute as Me, Who has access Anyone.
+ * 4. Pakai URL Web App sebagai API Login Pusat.
+ */
+
+var CONFIG = {
+  // Kalau Apps Script ini bound ke spreadsheet APJ_CORE_USER, biarkan kosong.
+  // Kalau ingin pakai ID manual, isi dengan Spreadsheet ID APJ_CORE_USER.
+  SHEET_ID: '',
+  TZ: 'Asia/Jakarta',
+  SESSION_TTL_SECONDS: 21600, // 6 jam
+  AUTO_MIGRATE_PLAIN_TO_HASH: true,
+  PASSWORD_HASH_PREFIX: 'APJ-SHA256-V1',
+  SHEETS: {
+    USER: 'USER',
+    PERMISSION: 'LEVEL_PERMISSION',
+    MODULE_ACCESS: 'MODUL_ACCESS',
+    OUTLET: 'OUTLET',
+    LOG_LOGIN: 'LOG_LOGIN',
+    BIRTHDAY_WISH: 'UCAPAN_ULANG_TAHUN',
+    DASHBOARD_TODAY: 'DASHBOARD_TODAY',
+    ANNOUNCEMENT: 'PENGUMUMAN_APJ',
+    AUDIT_LOG: 'AUDIT_LOG',
+    ERROR_LOG: 'ERROR_LOG',
+    HEALTH_CHECK: 'HEALTH_CHECK'
+  },
+  ADMIN_LEVELS: ['OWNER', 'SUPERADMIN'],
+  FULL_ACCESS_LEVELS: ['OWNER', 'SUPERADMIN']
+};
+
+// Runtime cache ringan per eksekusi Apps Script. Tidak mengubah response API, hanya mengurangi baca sheet berulang dalam satu request.
+var APJ_CORE_RUNTIME_CACHE = {};
+
+// Kolom yang wajib diperlakukan sebagai teks agar angka 0 di depan tidak hilang.
+// Contoh: username 087, no. HP 0812..., password plain lama, session id, dan ID user.
+var TEXT_HEADERS = [
+  'USER_ID', 'USERNAME', 'NAMA', 'PASSWORD_HASH', 'PASSWORD_SALT', 'PASSWORD_MODE',
+  'LEVEL', 'OUTLET_UTAMA', 'OUTLET_AKSES', 'STATUS', 'NO_HP', 'EMAIL', 'TANGGAL_LAHIR',
+  'LAST_LOGIN', 'LAST_UPDATE', 'UPDATED_BY', 'CATATAN',
+  'LOG_ID', 'TIMESTAMP', 'APP_NAME', 'ACTION', 'SESSION_ID', 'USER_AGENT', 'IP_ADDRESS', 'MESSAGE',
+  'UCAPAN_ID', 'TAHUN', 'USERNAME_ULANG_TAHUN', 'NAMA_ULANG_TAHUN', 'OUTLET_ULANG_TAHUN',
+  'USERNAME_PENGIRIM', 'NAMA_PENGIRIM', 'LEVEL_PENGIRIM', 'OUTLET_PENGIRIM', 'UCAPAN', 'CREATED_AT',
+  'TODAY_ID', 'TIPE', 'JUDUL', 'ISI', 'BADGE', 'ICON', 'URUTAN',
+  'PENGUMUMAN_ID', 'TARGET_LEVEL', 'TARGET_OUTLET', 'PRIORITAS', 'PINNED'
+];
+
+// Kolom ini dipaksa menjadi teks menggunakan formula ="..." agar Google Sheets
+// tidak mengubah 081... menjadi 81 atau tanggal menjadi format otomatis 2000-09-22.
+// Tidak memakai setNumberFormat() karena bisa bentrok dengan Google Sheets Table/dropdown.
+var FORMULA_TEXT_HEADERS = ['USERNAME', 'NO_HP', 'TANGGAL_LAHIR'];
+
+function isTextHeader_(headerName) {
+  var key = normalizeHeader_(headerName);
+  return TEXT_HEADERS.indexOf(key) !== -1;
+}
+
+function isFormulaTextHeader_(headerName) {
+  var key = normalizeHeader_(headerName);
+  return FORMULA_TEXT_HEADERS.indexOf(key) !== -1;
+}
+
+function textFormula_(value) {
+  var s = asText_(value);
+  if (!s) return '';
+  return '="' + s.replace(/"/g, '""') + '"';
+}
+
+function textValueForHeader_(headerName, value) {
+  var s = asText_(value);
+  if (!s) return '';
+  if (isFormulaTextHeader_(headerName)) return textFormula_(s);
+  return isTextHeader_(headerName) ? s : value;
+}
+
+function writeValueByHeader_(sheet, headerMap, rowNumber, headerName, value) {
+  var ix = headerMap[normalizeHeader_(headerName)];
+  if (ix == null) return false;
+  var cell = sheet.getRange(rowNumber, ix + 1);
+  var s = asText_(value);
+  if (isFormulaTextHeader_(headerName)) {
+    if (!s) {
+      cell.clearContent();
+    } else {
+      cell.setFormula(textFormula_(s));
+    }
+  } else if (isTextHeader_(headerName)) {
+    cell.setValue(s);
+  } else {
+    cell.setValue(value);
+  }
+  return true;
+}
+
+
+function doGet(e) {
+  return handleRequest_(e, 'GET');
+}
+
+function doPost(e) {
+  return handleRequest_(e, 'POST');
+}
+
+function handleRequest_(e, method) {
+  try {
+    var requestData = parseRequest_(e, method);
+    var action = asText_(requestData.action || 'health');
+    var ss = getSpreadsheet_();
+
+    if (action === 'health') return dataResponse_({
+      success: true,
+      app: 'APJ_CORE_USER',
+      message: 'APJ Core User API aktif.',
+      serverTime: nowString_()
+    });
+    if (action === 'healthCheckV45' || action === 'healthCheck') return healthCheckCoreV45_(ss, requestData);
+    if (action === 'setupObservabilityV45' || action === 'setupAuditHealthV45') return setupObservabilityCoreV45_(ss, requestData);
+    if (action === 'logClientErrorV45' || action === 'logClientError') return logClientErrorCoreV45_(ss, requestData);
+
+    if (action === 'login' || action === 'loginUser') return loginUser_(ss, requestData);
+    if (action === 'logout') return logout_(ss, requestData);
+    if (action === 'checkSession' || action === 'getSession' || action === 'getMyProfile') return getMyProfile_(ss, requestData);
+
+    if (action === 'getUserPermissions') return getUserPermissions_(ss, requestData);
+    if (action === 'getModuleAccess') return getModuleAccess_(ss, requestData);
+    if (action === 'getOutlets') return getOutlets_(ss, requestData);
+    if (action === 'getBootstrap') return getBootstrap_(ss, requestData);
+    if (action === 'setupCoreFormats') return setupCoreFormats_(ss, requestData);
+
+    if (action === 'getTodayBirthdays') return getTodayBirthdays_(ss, requestData);
+    if (action === 'sendBirthdayWish' || action === 'sendUcapanUlangTahunV202') return sendBirthdayWish_(ss, requestData);
+    if (action === 'getBirthdayWishes' || action === 'getUcapanUlangTahunV202') return getBirthdayWishes_(ss, requestData);
+    if (action === 'getDashboardUtamaDataV202') return getDashboardUtamaDataV202_(ss, requestData);
+    if (action === 'saveDashboardTodayV202') return saveDashboardTodayV202_(ss, requestData);
+    if (action === 'savePengumumanApjV202') return savePengumumanApjV202_(ss, requestData);
+
+    // Public registration + profile completion for APJ Central index.html
+    if (action === 'registerUser' || action === 'register') return registerUser_(ss, requestData);
+    if (action === 'updateMyProfile' || action === 'completeProfile') return updateMyProfile_(ss, requestData);
+    if (action === 'forgotPasswordCheckUsername') return forgotPasswordCheckUsername_(ss, requestData);
+    if (action === 'resetPasswordWithVerification' || action === 'resetForgotPassword') return resetPasswordWithVerification_(ss, requestData);
+
+    if (action === 'getTransferSignatureUsers' || action === 'getSignatureUsers' || action === 'getDaftarPenandatangan' || action === 'getActiveUsers' || action === 'getKaryawanAktif' || action === 'getAllUsers') return getSignatureUsers_(ss, requestData);
+
+    if (action === 'adminGetUsers') return adminGetUsers_(ss, requestData);
+    if (action === 'adminAddUser') return adminAddUser_(ss, requestData);
+    if (action === 'adminUpdateUser') return adminUpdateUser_(ss, requestData);
+    if (action === 'adminSetUserStatus') return adminSetUserStatus_(ss, requestData);
+    if (action === 'adminAddModule') return adminAddModule_(ss, requestData);
+
+    return dataResponse_({ success: false, message: 'Action tidak dikenal: ' + action });
+  } catch (err) {
+    logServerErrorCoreV45_(err, {}, 'CORE_ROUTER');
+    return dataResponse_({
+      success: false,
+      message: 'Server error: ' + (err && err.message ? err.message : err),
+      stack: err && err.stack ? err.stack : ''
+    });
+  }
+}
+
+/* =========================================================
+ * AUTH / LOGIN
+ * ======================================================= */
+
+function loginUser_(ss, requestData) {
+  var usernameInput = asText_(requestData.username).trim();
+  var passwordInput = asText_(requestData.password);
+  var appName = asText_(requestData.appName || requestData.app || 'APJ');
+  var userAgent = asText_(requestData.userAgent || '');
+
+  if (!usernameInput || !passwordInput) {
+    appendLoginLog_(ss, {
+      username: usernameInput,
+      appName: appName,
+      action: 'LOGIN',
+      status: 'FAILED',
+      userAgent: userAgent,
+      message: 'Username/password kosong.'
+    });
+    return dataResponse_({ success: false, message: 'Username dan password wajib diisi.' });
+  }
+
+  var userSheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var data = getSheetData_(userSheet);
+  if (data.rows.length < 1) return dataResponse_({ success: false, message: 'Sheet USER masih kosong.' });
+
+  var usernameKey = normalizeKey_(usernameInput);
+  var rowInfo = null;
+
+  for (var i = 0; i < data.rows.length; i++) {
+    var row = data.rows[i];
+    if (normalizeKey_(row.USERNAME) !== usernameKey) continue;
+    rowInfo = { rowNumber: i + 2, row: row };
+    break;
+  }
+
+  if (!rowInfo) {
+    appendLoginLog_(ss, {
+      username: usernameInput,
+      appName: appName,
+      action: 'LOGIN',
+      status: 'FAILED',
+      userAgent: userAgent,
+      message: 'Username tidak ditemukan.'
+    });
+    return dataResponse_({ success: false, message: 'Username atau password salah.' });
+  }
+
+  var user = rowInfo.row;
+  if (normalizeKey_(user.STATUS) !== 'aktif') {
+    appendLoginLog_(ss, {
+      username: user.USERNAME,
+      nama: user.NAMA,
+      level: user.LEVEL,
+      outlet: user.OUTLET_UTAMA,
+      appName: appName,
+      action: 'LOGIN',
+      status: 'FAILED',
+      userAgent: userAgent,
+      message: 'User nonaktif.'
+    });
+    return dataResponse_({ success: false, message: 'User tidak aktif. Hubungi admin.' });
+  }
+
+  var verify = verifyPassword_(passwordInput, user.PASSWORD_HASH, user.PASSWORD_SALT, user.PASSWORD_MODE);
+  if (!verify.ok) {
+    appendLoginLog_(ss, {
+      username: user.USERNAME,
+      nama: user.NAMA,
+      level: user.LEVEL,
+      outlet: user.OUTLET_UTAMA,
+      appName: appName,
+      action: 'LOGIN',
+      status: 'FAILED',
+      userAgent: userAgent,
+      message: 'Password salah.'
+    });
+    return dataResponse_({ success: false, message: 'Username atau password salah.' });
+  }
+
+  var migratedToHash = false;
+  if (verify.mode === 'PLAIN' && CONFIG.AUTO_MIGRATE_PLAIN_TO_HASH) {
+    migratePlainPasswordToHash_(userSheet, data.headerMap, rowInfo.rowNumber, passwordInput);
+    migratedToHash = true;
+  }
+
+  var token = createSessionForUsername_(user.USERNAME);
+  updateUserLoginInfo_(userSheet, data.headerMap, rowInfo.rowNumber);
+
+  var profile = buildUserProfile_(ss, user.USERNAME);
+  var permissions = readPermissionsForLevel_(ss, profile.level);
+  var modules = readModulesForUser_(ss, profile, false);
+
+  appendLoginLog_(ss, {
+    username: profile.username,
+    nama: profile.nama,
+    level: profile.level,
+    outlet: profile.outletUtama,
+    appName: appName,
+    action: 'LOGIN',
+    status: 'SUCCESS',
+    sessionId: token,
+    userAgent: userAgent,
+    message: migratedToHash ? 'Login berhasil. Password PLAIN dimigrasi ke HASH.' : 'Login berhasil.'
+  });
+
+  return dataResponse_({
+    success: true,
+    message: 'Login berhasil.',
+    sessionToken: token,
+    token: token,
+    expiresInSeconds: CONFIG.SESSION_TTL_SECONDS,
+    migratedToHash: migratedToHash,
+    user: {
+      userId: profile.userId,
+      username: profile.username,
+      nama: profile.nama,
+      level: profile.level,
+      outlet: profile.outletUtama,
+      outletUtama: profile.outletUtama,
+      outletAkses: profile.outletAkses,
+      noHp: profile.noHp,
+      email: profile.email,
+      tanggalLahir: profile.tanggalLahir,
+      permissions: permissions
+    },
+    modules: modules
+  });
+}
+
+function logout_(ss, requestData) {
+  var token = getSessionTokenFromRequest_(requestData);
+  var profile = getSessionProfile_(ss, requestData, false);
+  if (token) CacheService.getScriptCache().remove(getSessionCacheKey_(token));
+  appendLoginLog_(ss, {
+    username: profile ? profile.username : '',
+    nama: profile ? profile.nama : '',
+    level: profile ? profile.level : '',
+    outlet: profile ? profile.outletUtama : '',
+    appName: asText_(requestData.appName || 'APJ'),
+    action: 'LOGOUT',
+    status: 'SUCCESS',
+    sessionId: token,
+    message: 'Logout.'
+  });
+  return dataResponse_({ success: true, message: 'Logout berhasil.' });
+}
+
+function getMyProfile_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+  return dataResponse_({
+    success: true,
+    user: publicUserProfile_(profile),
+    modules: readModulesForUser_(ss, profile, false)
+  });
+}
+
+function getUserPermissions_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+  return dataResponse_({ success: true, permissions: profile.permissions || {} });
+}
+
+function getBootstrap_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+  return dataResponse_({
+    success: true,
+    user: publicUserProfile_(profile),
+    permissions: profile.permissions || {},
+    modules: readModulesForUser_(ss, profile, false),
+    outlets: readOutlets_(ss, false),
+    birthdays: findTodayBirthdays_(ss)
+  });
+}
+
+/* =========================================================
+ * MODULE ACCESS / OUTLET
+ * ======================================================= */
+
+function getModuleAccess_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+  var includeInactive = truthy_(requestData.includeInactive) && isAdminProfile_(profile);
+  return dataResponse_({
+    success: true,
+    modules: readModulesForUser_(ss, profile, includeInactive)
+  });
+}
+
+function getOutlets_(ss, requestData) {
+  var profile = getSessionProfile_(ss, requestData, false);
+  return dataResponse_({
+    success: true,
+    outlets: readOutlets_(ss, truthy_(requestData.includeInactive) && isAdminProfile_(profile))
+  });
+}
+
+function readModulesForUser_(ss, profile, includeInactive) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.MODULE_ACCESS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  var data = getSheetDataCachedRuntime_(sheet);
+  var modules = [];
+
+  data.rows.forEach(function(row) {
+    var status = upperText_(row.STATUS || 'AKTIF');
+    var isMenu = upperText_(row.IS_MENU || 'Y');
+    if (!includeInactive && ['AKTIF', 'SEGERA', 'COMING_SOON', 'COMING SOON'].indexOf(status) < 0) return;
+    if (isMenu !== 'Y') return;
+
+    var key = asText_(row.PERMISSION_KEY);
+    var allowed = !key || profileHasPermission_(profile, key);
+    modules.push({
+      moduleId: asText_(row.MODULE_ID),
+      appGroup: asText_(row.APP_GROUP),
+      moduleKey: asText_(row.MODULE_KEY),
+      moduleName: asText_(row.MODULE_NAME),
+      parentMenu: asText_(row.PARENT_MENU || 'ROOT'),
+      url: asText_(row.URL),
+      permissionKey: key,
+      menuOrder: Number(row.MENU_ORDER || 9999),
+      status: status,
+      icon: asText_(row.ICON),
+      catatan: asText_(row.CATATAN),
+      allowed: allowed,
+      locked: !allowed
+    });
+  });
+
+  modules.sort(function(a, b) { return (a.menuOrder || 9999) - (b.menuOrder || 9999); });
+  return modules;
+}
+
+function readOutlets_(ss, includeInactive) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.OUTLET);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  var data = getSheetDataCachedRuntime_(sheet);
+  var outlets = [];
+  data.rows.forEach(function(row) {
+    var status = upperText_(row.STATUS || 'AKTIF');
+    if (!includeInactive && status !== 'AKTIF') return;
+    outlets.push({
+      outletId: asText_(row.OUTLET_ID),
+      kodeOutlet: asText_(row.KODE_OUTLET),
+      namaOutlet: asText_(row.NAMA_OUTLET),
+      status: status,
+      latitude: row.LATITUDE,
+      longitude: row.LONGITUDE || row.LONGTITUDE,
+      radiusMeter: row.RADIUS_METER,
+      jamBuka: formatSheetTime_(row.JAM_BUKA),
+      jamTutup: formatSheetTime_(row.JAM_TUTUP),
+      catatan: asText_(row.CATATAN)
+    });
+  });
+  return outlets;
+}
+
+
+function setupCoreFormats_(ss, requestData) {
+  // Google Sheets Table / dropdown typed columns can reject setNumberFormat().
+  // Do not force number formats here. Values are written as strings by Apps Script,
+  // so new values like 087 remain safe without changing column formats.
+  return dataResponse_({
+    success: true,
+    message: 'Setup format dilewati dengan aman. Data teks tetap ditulis sebagai string oleh Apps Script.'
+  });
+}
+
+/* =========================================================
+ * BIRTHDAY / UCAPAN ULANG TAHUN
+ * ======================================================= */
+
+function getTodayBirthdays_(ss, requestData) {
+  requireSession_(ss, requestData);
+  return dataResponse_({ success: true, birthdays: findTodayBirthdays_(ss) });
+}
+
+function getUserBirthdayValue_(row) {
+  if (!row) return '';
+  return row.TANGGAL_LAHIR || row.TGL_LAHIR || row.TANGGAL_ULANG_TAHUN || row.ULANG_TAHUN || row.ULTAH || row.TTL || row.BIRTHDAY || row.BIRTH_DATE || row.DATE_OF_BIRTH || '';
+}
+
+function findTodayBirthdays_(ss) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.USER);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  var today = new Date();
+  var todayDM = getDayMonth_(today);
+  // Birthday Dashboard harus membaca USER langsung dari sheet.
+  // Jangan pakai runtime cache supaya perubahan tanggal lahir manual di sheet langsung terbaca.
+  var data = getSheetData_(sheet);
+  var birthdays = [];
+
+  data.rows.forEach(function(row) {
+    if (upperText_(row.STATUS) !== 'AKTIF') return;
+    var dob = getUserBirthdayValue_(row);
+    var dm = getDayMonth_(dob);
+    if (!dm || dm.key !== todayDM.key) return;
+    birthdays.push({
+      username: asText_(row.USERNAME),
+      nama: asText_(row.NAMA),
+      outlet: asText_(row.OUTLET_UTAMA),
+      tanggal: dm.display,
+      message: 'Hari ini ulang tahun ' + asText_(row.NAMA) + '.'
+    });
+  });
+
+  birthdays.sort(function(a, b) { return a.nama.localeCompare(b.nama); });
+  return birthdays;
+}
+
+function findTodayBirthdayUserByName_(ss, name) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.USER);
+  if (!sheet || !name) return null;
+  var data = getSheetData_(sheet);
+  var todayDM = getDayMonth_(new Date());
+  var targetKey = normalizeKey_(name);
+  for (var i = 0; i < data.rows.length; i++) {
+    var row = data.rows[i];
+    if (upperText_(row.STATUS) !== 'AKTIF') continue;
+    if (normalizeKey_(row.NAMA) !== targetKey) continue;
+    var dm = getDayMonth_(getUserBirthdayValue_(row));
+    if (dm && dm.key === todayDM.key) return row;
+  }
+  return null;
+}
+
+function sendBirthdayWish_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+  var targetUsername = asText_(requestData.targetUsername || requestData.usernameUlangTahun || requestData.usernameTarget).trim();
+  var targetName = asText_(requestData.targetName || requestData.namaUlangTahun || requestData.namaTarget).trim();
+  var ucapan = asText_(requestData.ucapan || requestData.message || '').trim();
+
+  if (!targetUsername && !targetName) return dataResponse_({ success: false, message: 'Target ulang tahun wajib dipilih.' });
+  if (!ucapan) return dataResponse_({ success: false, message: 'Ucapan/doa wajib diisi.' });
+  if (ucapan.length > 500) return dataResponse_({ success: false, message: 'Ucapan maksimal 500 karakter.' });
+
+  var target = targetUsername ? findUserByUsername_(ss, targetUsername) : findTodayBirthdayUserByName_(ss, targetName);
+  if (!target) return dataResponse_({ success: false, message: 'User ulang tahun tidak ditemukan.' });
+  targetUsername = asText_(target.USERNAME);
+  if (upperText_(target.STATUS) !== 'AKTIF') return dataResponse_({ success: false, message: 'User ulang tahun tidak aktif.' });
+
+  var year = Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy');
+  var sheet = getOrCreateBirthdaySheet_(ss);
+  var data = getSheetData_(sheet);
+
+  for (var i = 0; i < data.rows.length; i++) {
+    var row = data.rows[i];
+    if (
+      asText_(row.TAHUN) === year &&
+      normalizeKey_(row.USERNAME_ULANG_TAHUN) === normalizeKey_(target.USERNAME) &&
+      normalizeKey_(row.USERNAME_PENGIRIM) === normalizeKey_(profile.username) &&
+      upperText_(row.STATUS || 'AKTIF') === 'AKTIF'
+    ) {
+      return dataResponse_({ success: false, message: 'Kamu sudah mengirim doa untuk ' + asText_(target.NAMA) + ' tahun ini.' });
+    }
+  }
+
+  var id = generateNextId_(sheet, 'BDW-', 6);
+  sheet.appendRow([
+    id,
+    Utilities.formatDate(new Date(), CONFIG.TZ, 'dd/MM/yyyy'),
+    year,
+    asText_(target.USERNAME),
+    asText_(target.NAMA),
+    asText_(target.OUTLET_UTAMA),
+    profile.username,
+    profile.nama,
+    profile.level,
+    profile.outletUtama,
+    ucapan,
+    'AKTIF',
+    nowString_(),
+    ''
+  ]);
+
+  var wish = {
+    ucapanId: id,
+    tanggal: Utilities.formatDate(new Date(), CONFIG.TZ, 'dd/MM/yyyy'),
+    tahun: year,
+    usernameUlangTahun: asText_(target.USERNAME),
+    namaUlangTahun: asText_(target.NAMA),
+    outletUlangTahun: asText_(target.OUTLET_UTAMA),
+    usernamePengirim: profile.username,
+    namaPengirim: profile.nama,
+    levelPengirim: profile.level,
+    outletPengirim: profile.outletUtama,
+    ucapan: ucapan,
+    status: 'AKTIF',
+    createdAt: nowString_()
+  };
+
+  return dataResponse_({ success: true, message: 'Doa ulang tahun berhasil dikirim.', ucapanId: id, wish: wish });
+}
+
+function getDashboardUtamaDataV202_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+  var birthdays = findTodayBirthdays_(ss);
+  var birthdayWishes = readBirthdayWishesForProfile_(ss, profile, Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy'), 'received');
+  var sentBirthdayWishes = readBirthdayWishesForProfile_(ss, profile, Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy'), 'sent');
+  return dataResponse_({
+    success: true,
+    syncAt: nowString_(),
+    user: profile,
+    todayItems: readDashboardTodayItems_(ss, profile),
+    pengumuman: readPengumumanApj_(ss, profile),
+    birthdays: birthdays,
+    birthdayWishes: birthdayWishes,
+    sentBirthdayWishes: sentBirthdayWishes
+  });
+}
+
+function readDashboardTodayItems_(ss, profile) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.DASHBOARD_TODAY);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = getSheetData_(sheet);
+  var rows = [];
+  data.rows.forEach(function(row) {
+    if (upperText_(row.STATUS || 'AKTIF') !== 'AKTIF') return;
+    if (!isDateInRangeToday_(row.TANGGAL_MULAI, row.TANGGAL_SELESAI)) return;
+    rows.push({
+      todayId: asText_(row.TODAY_ID),
+      tanggalMulai: formatDateOnly_(row.TANGGAL_MULAI),
+      tanggalSelesai: formatDateOnly_(row.TANGGAL_SELESAI),
+      tipe: asText_(row.TIPE),
+      judul: asText_(row.JUDUL),
+      isi: asText_(row.ISI),
+      badge: asText_(row.BADGE),
+      icon: asText_(row.ICON),
+      urutan: Number(row.URUTAN || 999),
+      status: asText_(row.STATUS || 'AKTIF'),
+      catatan: asText_(row.CATATAN)
+    });
+  });
+  rows.sort(function(a, b) { return (a.urutan || 999) - (b.urutan || 999); });
+  return rows;
+}
+
+function readPengumumanApj_(ss, profile) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.ANNOUNCEMENT);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = getSheetData_(sheet);
+  var rows = [];
+  data.rows.forEach(function(row) {
+    if (upperText_(row.STATUS || 'AKTIF') !== 'AKTIF') return;
+    if (!isDateInRangeToday_(row.TANGGAL_MULAI, row.TANGGAL_SELESAI)) return;
+    if (!targetMatch_(row.TARGET_LEVEL, profile.level)) return;
+    if (!targetMatchOutlet_(row.TARGET_OUTLET, profile)) return;
+    rows.push({
+      pengumumanId: asText_(row.PENGUMUMAN_ID),
+      tanggalMulai: formatDateOnly_(row.TANGGAL_MULAI),
+      tanggalSelesai: formatDateOnly_(row.TANGGAL_SELESAI),
+      judul: asText_(row.JUDUL),
+      isi: asText_(row.ISI),
+      targetLevel: asText_(row.TARGET_LEVEL || 'ALL'),
+      targetOutlet: asText_(row.TARGET_OUTLET || 'ALL'),
+      prioritas: upperText_(row.PRIORITAS || 'NORMAL'),
+      pinned: permissionYes_(row.PINNED),
+      status: asText_(row.STATUS || 'AKTIF'),
+      catatan: asText_(row.CATATAN)
+    });
+  });
+  rows.sort(function(a, b) {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    var pa = a.prioritas === 'PENTING' ? 0 : 1;
+    var pb = b.prioritas === 'PENTING' ? 0 : 1;
+    return pa - pb;
+  });
+  return rows;
+}
+
+function readBirthdayWishesForProfile_(ss, profile, year, mode) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.BIRTHDAY_WISH);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = getSheetData_(sheet);
+  var out = [];
+  var profileUser = normalizeKey_(profile.username);
+  var profileName = normalizeKey_(profile.nama);
+  var readMode = mode || 'received';
+  data.rows.forEach(function(row) {
+    if (upperText_(row.STATUS || 'AKTIF') !== 'AKTIF') return;
+    if (year && asText_(row.TAHUN) !== asText_(year)) return;
+    var targetUser = normalizeKey_(row.USERNAME_ULANG_TAHUN);
+    var targetName = normalizeKey_(row.NAMA_ULANG_TAHUN);
+    var senderUser = normalizeKey_(row.USERNAME_PENGIRIM);
+    var senderName = normalizeKey_(row.NAMA_PENGIRIM);
+    if (readMode === 'sent') {
+      if (!((profileUser && senderUser === profileUser) || (profileName && senderName === profileName))) return;
+    } else {
+      if (!((profileUser && targetUser === profileUser) || (profileName && targetName === profileName))) return;
+    }
+    out.push({
+      ucapanId: asText_(row.UCAPAN_ID),
+      tanggal: asText_(row.TANGGAL),
+      tahun: asText_(row.TAHUN),
+      usernameUlangTahun: asText_(row.USERNAME_ULANG_TAHUN),
+      namaUlangTahun: asText_(row.NAMA_ULANG_TAHUN),
+      outletUlangTahun: asText_(row.OUTLET_ULANG_TAHUN),
+      usernamePengirim: asText_(row.USERNAME_PENGIRIM),
+      namaPengirim: asText_(row.NAMA_PENGIRIM),
+      levelPengirim: asText_(row.LEVEL_PENGIRIM),
+      outletPengirim: asText_(row.OUTLET_PENGIRIM),
+      ucapan: asText_(row.UCAPAN),
+      createdAt: asText_(row.CREATED_AT)
+    });
+  });
+  return out;
+}
+
+function requireDashboardHomeEdit_(ss, requestData, specificPermission) {
+  var profile = requireSession_(ss, requestData);
+  if (isAdminProfile_(profile)) return profile;
+  var keys = ['dashboardUtamaEdit', 'editDashboardUtama', specificPermission];
+  if (specificPermission === 'editToday') keys.push('editMotoJargon');
+  for (var i = 0; i < keys.length; i++) {
+    if (profileHasPermission_(profile, keys[i])) return profile;
+  }
+  throw new Error('Akses edit Dashboard Utama ditolak.');
+}
+
+function saveDashboardTodayV202_(ss, requestData) {
+  var profile = requireDashboardHomeEdit_(ss, requestData, 'editToday');
+  var payload = requestData.item || requestData;
+  var sheet = getOrCreateDashboardTodaySheet_(ss);
+  var headerMap = buildHeaderMapFromSheet_(sheet);
+  var id = asText_(payload.todayId || payload.TODAY_ID || '').trim() || generateNextId_(sheet, 'TODAY-', 4);
+  appendObjectRow_(sheet, headerMap, {
+    TODAY_ID: id,
+    TANGGAL_MULAI: payload.tanggalMulai || payload.TANGGAL_MULAI || Utilities.formatDate(new Date(), CONFIG.TZ, 'dd/MM/yyyy'),
+    TANGGAL_SELESAI: payload.tanggalSelesai || payload.TANGGAL_SELESAI || '',
+    TIPE: payload.tipe || 'TODAY',
+    JUDUL: payload.judul || payload.title || 'Today',
+    ISI: payload.isi || payload.body || '',
+    BADGE: payload.badge || '',
+    ICON: payload.icon || '✨',
+    URUTAN: payload.urutan || 1,
+    STATUS: payload.status || 'AKTIF',
+    CREATED_BY: profile.username,
+    CREATED_AT: nowString_(),
+    UPDATED_BY: profile.username,
+    UPDATED_AT: nowString_(),
+    CATATAN: payload.catatan || ''
+  });
+  return dataResponse_({ success: true, message: 'Today berhasil disimpan.', todayId: id });
+}
+
+function savePengumumanApjV202_(ss, requestData) {
+  var profile = requireDashboardHomeEdit_(ss, requestData, 'editPengumuman');
+  var payload = requestData.item || requestData;
+  var sheet = getOrCreatePengumumanApjSheet_(ss);
+  var headerMap = buildHeaderMapFromSheet_(sheet);
+  var id = asText_(payload.pengumumanId || payload.PENGUMUMAN_ID || '').trim() || generateNextId_(sheet, 'PGM-', 4);
+  appendObjectRow_(sheet, headerMap, {
+    PENGUMUMAN_ID: id,
+    TANGGAL_MULAI: payload.tanggalMulai || payload.TANGGAL_MULAI || Utilities.formatDate(new Date(), CONFIG.TZ, 'dd/MM/yyyy'),
+    TANGGAL_SELESAI: payload.tanggalSelesai || payload.TANGGAL_SELESAI || '',
+    JUDUL: payload.judul || payload.title || 'Pengumuman',
+    ISI: payload.isi || payload.body || '',
+    TARGET_LEVEL: payload.targetLevel || payload.TARGET_LEVEL || 'ALL',
+    TARGET_OUTLET: payload.targetOutlet || payload.TARGET_OUTLET || 'ALL',
+    PRIORITAS: payload.prioritas || payload.PRIORITAS || 'NORMAL',
+    PINNED: payload.pinned || payload.PINNED || '',
+    STATUS: payload.status || 'AKTIF',
+    CREATED_BY: profile.username,
+    CREATED_AT: nowString_(),
+    UPDATED_BY: profile.username,
+    UPDATED_AT: nowString_(),
+    CATATAN: payload.catatan || ''
+  });
+  return dataResponse_({ success: true, message: 'Pengumuman berhasil disimpan.', pengumumanId: id });
+}
+
+function isDateInRangeToday_(startValue, endValue) {
+  var today = startOfDay_(new Date());
+  var start = parseDateLoose_(startValue);
+  var end = parseDateLoose_(endValue);
+  if (start && today.getTime() < startOfDay_(start).getTime()) return false;
+  if (end && today.getTime() > startOfDay_(end).getTime()) return false;
+  return true;
+}
+
+function startOfDay_(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+function parseDateLoose_(value) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) return value;
+  var s = asText_(value);
+  var m;
+  if ((m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/))) return new Date(Number(m[3].length === 2 ? '20' + m[3] : m[3]), Number(m[2]) - 1, Number(m[1]));
+  if ((m = s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/))) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function targetMatch_(targetValue, userValue) {
+  var t = upperText_(targetValue || 'ALL');
+  if (!t || t === 'ALL' || t === '*') return true;
+  var u = upperText_(userValue || '');
+  return t.split(/[;,|]/).some(function(x) { return upperText_(x) === u; });
+}
+
+function targetMatchOutlet_(targetValue, profile) {
+  var t = upperText_(targetValue || 'ALL');
+  if (!t || t === 'ALL' || t === '*') return true;
+  var allowed = (asText_(profile.outletAkses || profile.outletUtama || '')).toUpperCase().split(/[;,|]/).map(function(x) { return upperText_(x); });
+  return t.split(/[;,|]/).some(function(x) { return allowed.indexOf(upperText_(x)) >= 0; });
+}
+
+function getOrCreateDashboardTodaySheet_(ss) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.DASHBOARD_TODAY);
+  if (sheet) return sheet;
+  sheet = ss.insertSheet(CONFIG.SHEETS.DASHBOARD_TODAY);
+  sheet.appendRow(['TODAY_ID','TANGGAL_MULAI','TANGGAL_SELESAI','TIPE','JUDUL','ISI','BADGE','ICON','URUTAN','STATUS','CREATED_BY','CREATED_AT','UPDATED_BY','UPDATED_AT','CATATAN']);
+  return sheet;
+}
+
+function getOrCreatePengumumanApjSheet_(ss) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.ANNOUNCEMENT);
+  if (sheet) return sheet;
+  sheet = ss.insertSheet(CONFIG.SHEETS.ANNOUNCEMENT);
+  sheet.appendRow(['PENGUMUMAN_ID','TANGGAL_MULAI','TANGGAL_SELESAI','JUDUL','ISI','TARGET_LEVEL','TARGET_OUTLET','PRIORITAS','PINNED','STATUS','CREATED_BY','CREATED_AT','UPDATED_BY','UPDATED_AT','CATATAN']);
+  return sheet;
+}
+
+function getBirthdayWishes_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+  var targetUsername = asText_(requestData.targetUsername || requestData.usernameUlangTahun || '').trim();
+  var year = asText_(requestData.year || Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy'));
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.BIRTHDAY_WISH);
+  if (!sheet || sheet.getLastRow() < 2) return dataResponse_({ success: true, wishes: [] });
+
+  var data = getSheetData_(sheet);
+  var wishes = [];
+  data.rows.forEach(function(row) {
+    if (upperText_(row.STATUS || 'AKTIF') !== 'AKTIF') return;
+    if (year && asText_(row.TAHUN) !== year) return;
+    if (targetUsername && normalizeKey_(row.USERNAME_ULANG_TAHUN) !== normalizeKey_(targetUsername)) return;
+
+    // User biasa boleh melihat ucapan untuk dirinya sendiri dan ucapan ulang tahun hari ini.
+    // Admin/Owner bisa melihat semua sesuai filter.
+    if (!isAdminProfile_(profile) && targetUsername && normalizeKey_(targetUsername) !== normalizeKey_(profile.username)) {
+      // Tetap boleh ditampilkan di dashboard umum jika frontend memanggil target ulang tahun hari ini.
+    }
+
+    wishes.push({
+      ucapanId: asText_(row.UCAPAN_ID),
+      tanggal: asText_(row.TANGGAL),
+      tahun: asText_(row.TAHUN),
+      usernameUlangTahun: asText_(row.USERNAME_ULANG_TAHUN),
+      namaUlangTahun: asText_(row.NAMA_ULANG_TAHUN),
+      outletUlangTahun: asText_(row.OUTLET_ULANG_TAHUN),
+      usernamePengirim: asText_(row.USERNAME_PENGIRIM),
+      namaPengirim: asText_(row.NAMA_PENGIRIM),
+      outletPengirim: asText_(row.OUTLET_PENGIRIM),
+      ucapan: asText_(row.UCAPAN),
+      createdAt: asText_(row.CREATED_AT)
+    });
+  });
+
+  return dataResponse_({ success: true, wishes: wishes });
+}
+
+
+/* =========================================================
+ * PUBLIC REGISTRATION / PROFILE COMPLETION
+ * ======================================================= */
+
+function registerUser_(ss, requestData) {
+  var payload = requestData.user || requestData;
+  var username = asText_(payload.username).trim().toLowerCase();
+  var nama = asText_(payload.nama || payload.namaLengkap || payload.fullName).trim();
+  var password = asText_(payload.password || payload.newPassword);
+  var noHp = asText_(payload.noHp || payload.no_hp || payload.phone).trim();
+  var email = asText_(payload.email).trim();
+  var tanggalLahir = asText_(payload.tanggalLahir || payload.tanggal_lahir || payload.birthDate).trim();
+  var outletUtama = upperText_(payload.outletUtama || payload.outlet || '');
+  var outletAkses = upperText_(payload.outletAkses || outletUtama || '');
+  var appName = asText_(payload.appName || payload.app || 'APJ_REGISTER');
+  var userAgent = asText_(payload.userAgent || '');
+
+  if (!username || !nama || !password || !noHp || !email || !tanggalLahir) {
+    return dataResponse_({ success: false, message: 'Username, nama, password, no. HP, email, dan tanggal lahir wajib diisi.' });
+  }
+  if (/\s/.test(username)) return dataResponse_({ success: false, message: 'Username tidak boleh memakai spasi.' });
+  if (password.length < 6) return dataResponse_({ success: false, message: 'Password minimal 6 karakter.' });
+  if (findUserByUsername_(ss, username)) return dataResponse_({ success: false, message: 'Username sudah terdaftar.' });
+
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var headerMap = buildHeaderMapFromSheet_(sheet);
+  var id = generateNextId_(sheet, 'USR-', 4);
+  var salt = makeSalt_();
+  var passwordHash = hashPassword_(password, salt);
+
+  appendObjectRow_(sheet, headerMap, {
+    USER_ID: id,
+    USERNAME: username,
+    NAMA: nama,
+    PASSWORD_HASH: passwordHash,
+    PASSWORD_SALT: salt,
+    PASSWORD_MODE: 'HASH',
+    LEVEL: upperText_(payload.level || 'KARYAWAN'),
+    OUTLET_UTAMA: outletUtama,
+    OUTLET_AKSES: outletAkses,
+    STATUS: 'NONAKTIF',
+    NO_HP: noHp,
+    EMAIL: email,
+    TANGGAL_LAHIR: tanggalLahir,
+    LAST_LOGIN: '',
+    LAST_UPDATE: nowString_(),
+    UPDATED_BY: 'REGISTER_FORM',
+    CATATAN: asText_(payload.catatan || 'Daftar mandiri dari halaman login. Menunggu aktivasi Owner/Admin.')
+  });
+
+  appendLoginLog_(ss, {
+    username: username,
+    nama: nama,
+    level: upperText_(payload.level || 'KARYAWAN'),
+    outlet: outletUtama,
+    appName: appName,
+    action: 'REGISTER',
+    status: 'PENDING',
+    userAgent: userAgent,
+    message: 'Pendaftaran user baru menunggu aktivasi admin.'
+  });
+
+  return dataResponse_({
+    success: true,
+    message: 'Pendaftaran berhasil dikirim. Akun menunggu aktivasi Owner/Admin.',
+    userId: id,
+    status: 'NONAKTIF'
+  });
+}
+
+function updateMyProfile_(ss, requestData) {
+  var profile = requireSession_(ss, requestData);
+
+  // Terima payload dari beberapa bentuk agar aman:
+  // 1) { noHp, email, tanggalLahir }
+  // 2) { user: { noHp, email, tanggalLahir } }
+  // 3) { profile: { noHp, email, tanggalLahir } }
+  var payload = mergePayloadObjects_(requestData, requestData.user, requestData.profile, requestData.data, requestData.form);
+
+  var noHp = asText_(pickValue_(payload, ['noHp', 'no_hp', 'NO_HP', 'nohp', 'hp', 'phone', 'nomorHp', 'nomor_hp'])).trim();
+  var email = asText_(pickValue_(payload, ['email', 'EMAIL', 'mail'])).trim();
+  var tanggalLahir = normalizeBirthDateForSheet_(pickValue_(payload, ['tanggalLahir', 'tanggal_lahir', 'TANGGAL_LAHIR', 'birthDate', 'birth_date', 'dob', 'tglLahir', 'tgl_lahir']));
+
+  if (!noHp || !email || !tanggalLahir) {
+    return dataResponse_({
+      success: false,
+      message: 'No. HP, email, dan tanggal lahir wajib diisi.',
+      received: {
+        noHp: noHp ? 'ADA' : 'KOSONG',
+        email: email ? 'ADA' : 'KOSONG',
+        tanggalLahir: tanggalLahir ? 'ADA' : 'KOSONG'
+      }
+    });
+  }
+
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var data = getSheetData_(sheet);
+  var target = findUserRowInfo_(data, profile.username);
+  if (!target) return dataResponse_({ success: false, message: 'User tidak ditemukan.' });
+
+  var colNoHp = findHeaderIndexByCandidates_(data.headerMap, ['NO_HP', 'NOHP', 'NO HP', 'HP', 'NO_TELP', 'NOMOR_HP', 'PHONE']);
+  var colEmail = findHeaderIndexByCandidates_(data.headerMap, ['EMAIL', 'E_MAIL', 'MAIL']);
+  var colTanggal = findHeaderIndexByCandidates_(data.headerMap, ['TANGGAL_LAHIR', 'TANGGAL LAHIR', 'TGL_LAHIR', 'TGL LAHIR', 'DOB', 'BIRTH_DATE']);
+  var colLastUpdate = findHeaderIndexByCandidates_(data.headerMap, ['LAST_UPDATE', 'LAST UPDATE']);
+  var colUpdatedBy = findHeaderIndexByCandidates_(data.headerMap, ['UPDATED_BY', 'UPDATED BY']);
+
+  var missing = [];
+  if (colNoHp == null) missing.push('NO_HP');
+  if (colEmail == null) missing.push('EMAIL');
+  if (colTanggal == null) missing.push('TANGGAL_LAHIR');
+  if (missing.length) {
+    return dataResponse_({
+      success: false,
+      message: 'Kolom profil tidak ditemukan di sheet USER: ' + missing.join(', ') + '. Cek header baris pertama.',
+      missingColumns: missing
+    });
+  }
+
+  writeCellFormulaText_(sheet, target.rowNumber, colNoHp + 1, noHp);
+  writeCellText_(sheet, target.rowNumber, colEmail + 1, email);
+  writeCellFormulaText_(sheet, target.rowNumber, colTanggal + 1, tanggalLahir);
+  if (colLastUpdate != null) writeCellText_(sheet, target.rowNumber, colLastUpdate + 1, nowString_());
+  if (colUpdatedBy != null) writeCellText_(sheet, target.rowNumber, colUpdatedBy + 1, profile.username);
+  SpreadsheetApp.flush();
+
+  appendLoginLog_(ss, {
+    username: profile.username,
+    nama: profile.nama,
+    level: profile.level,
+    outlet: profile.outletUtama,
+    appName: asText_(requestData.appName || 'APJ_PROFILE'),
+    action: 'UPDATE_PROFILE',
+    status: 'SUCCESS',
+    sessionId: getSessionTokenFromRequest_(requestData),
+    userAgent: asText_(requestData.userAgent || ''),
+    message: 'User melengkapi profil dari halaman login.'
+  });
+
+  var updatedProfile = buildUserProfile_(ss, profile.username);
+  return dataResponse_({
+    success: true,
+    message: 'Profil berhasil diperbarui.',
+    user: publicUserProfile_(updatedProfile),
+    savedProfile: {
+      noHp: noHp,
+      email: email,
+      tanggalLahir: tanggalLahir
+    }
+  });
+}
+
+
+function forgotPasswordCheckUsername_(ss, requestData) {
+  var username = asText_(requestData.username).trim();
+  if (!username) return dataResponse_({ success: false, message: 'Username wajib diisi.' });
+
+  var row = findUserByUsername_(ss, username);
+  if (!row) return dataResponse_({ success: false, message: 'Username tidak ditemukan.' });
+  if (upperText_(row.STATUS) !== 'AKTIF') {
+    return dataResponse_({ success: false, message: 'Akun belum aktif/nonaktif. Hubungi Owner/Admin untuk bantuan reset password.' });
+  }
+
+  var noHp = asText_(row.NO_HP).trim();
+  var tanggalLahir = normalizeBirthDateForSheet_(row.TANGGAL_LAHIR);
+  if (!noHp || !tanggalLahir) {
+    appendLoginLog_(ss, {
+      username: asText_(row.USERNAME),
+      nama: asText_(row.NAMA),
+      level: asText_(row.LEVEL),
+      outlet: asText_(row.OUTLET_UTAMA),
+      appName: asText_(requestData.appName || 'APJ_FORGOT_PASSWORD'),
+      action: 'FORGOT_PASSWORD_CHECK',
+      status: 'NEED_ADMIN',
+      userAgent: asText_(requestData.userAgent || ''),
+      message: 'Data verifikasi belum lengkap.'
+    });
+    return dataResponse_({
+      success: false,
+      needsAdmin: true,
+      message: 'Data verifikasi akun belum lengkap. Silakan hubungi Owner/Admin untuk reset password.'
+    });
+  }
+
+  appendLoginLog_(ss, {
+    username: asText_(row.USERNAME),
+    nama: asText_(row.NAMA),
+    level: asText_(row.LEVEL),
+    outlet: asText_(row.OUTLET_UTAMA),
+    appName: asText_(requestData.appName || 'APJ_FORGOT_PASSWORD'),
+    action: 'FORGOT_PASSWORD_CHECK',
+    status: 'SUCCESS',
+    userAgent: asText_(requestData.userAgent || ''),
+    message: 'Username ditemukan untuk reset mandiri.'
+  });
+
+  return dataResponse_({
+    success: true,
+    message: 'Username ditemukan. Lanjutkan verifikasi No. HP dan tanggal lahir.',
+    username: asText_(row.USERNAME),
+    nama: asText_(row.NAMA)
+  });
+}
+
+function resetPasswordWithVerification_(ss, requestData) {
+  var username = asText_(requestData.username).trim();
+  var noHpInput = asText_(requestData.noHp || requestData.no_hp || requestData.phone).trim();
+  var tanggalInput = normalizeBirthDateForSheet_(requestData.tanggalLahir || requestData.tanggal_lahir || requestData.birthDate || requestData.dob);
+  var newPassword = asText_(requestData.newPassword || requestData.passwordBaru || requestData.password).trim();
+  var appName = asText_(requestData.appName || 'APJ_FORGOT_PASSWORD');
+  var userAgent = asText_(requestData.userAgent || '');
+
+  if (!username || !noHpInput || !tanggalInput || !newPassword) {
+    return dataResponse_({ success: false, message: 'Username, No. HP, tanggal lahir, dan password baru wajib diisi.' });
+  }
+  if (newPassword.length < 6) return dataResponse_({ success: false, message: 'Password baru minimal 6 karakter.' });
+
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var data = getSheetData_(sheet);
+  var target = findUserRowInfo_(data, username);
+  if (!target) return dataResponse_({ success: false, message: 'Username tidak ditemukan.' });
+
+  var row = target.row;
+  if (upperText_(row.STATUS) !== 'AKTIF') {
+    appendLoginLog_(ss, {
+      username: asText_(row.USERNAME),
+      nama: asText_(row.NAMA),
+      level: asText_(row.LEVEL),
+      outlet: asText_(row.OUTLET_UTAMA),
+      appName: appName,
+      action: 'RESET_PASSWORD',
+      status: 'FAILED',
+      userAgent: userAgent,
+      message: 'Akun nonaktif.'
+    });
+    return dataResponse_({ success: false, message: 'Akun belum aktif/nonaktif. Hubungi Owner/Admin.' });
+  }
+
+  var noHpSheet = asText_(row.NO_HP).trim();
+  var tanggalSheet = normalizeBirthDateForSheet_(row.TANGGAL_LAHIR);
+  if (!noHpSheet || !tanggalSheet) {
+    return dataResponse_({ success: false, needsAdmin: true, message: 'Data verifikasi akun belum lengkap. Silakan hubungi Owner/Admin.' });
+  }
+
+  if (!phoneMatches_(noHpInput, noHpSheet) || !birthDateMatches_(tanggalInput, tanggalSheet)) {
+    appendLoginLog_(ss, {
+      username: asText_(row.USERNAME),
+      nama: asText_(row.NAMA),
+      level: asText_(row.LEVEL),
+      outlet: asText_(row.OUTLET_UTAMA),
+      appName: appName,
+      action: 'RESET_PASSWORD',
+      status: 'FAILED',
+      userAgent: userAgent,
+      message: 'Verifikasi No. HP/tanggal lahir tidak cocok.'
+    });
+    return dataResponse_({ success: false, message: 'Verifikasi gagal. No. HP atau tanggal lahir tidak cocok.' });
+  }
+
+  var salt = makeSalt_();
+  setCellByHeader_(sheet, data.headerMap, target.rowNumber, 'PASSWORD_HASH', hashPassword_(newPassword, salt));
+  setCellByHeader_(sheet, data.headerMap, target.rowNumber, 'PASSWORD_SALT', salt);
+  setCellByHeader_(sheet, data.headerMap, target.rowNumber, 'PASSWORD_MODE', 'HASH');
+  setCellByHeader_(sheet, data.headerMap, target.rowNumber, 'LAST_UPDATE', nowString_());
+  setCellByHeader_(sheet, data.headerMap, target.rowNumber, 'UPDATED_BY', 'FORGOT_PASSWORD');
+  SpreadsheetApp.flush();
+
+  appendLoginLog_(ss, {
+    username: asText_(row.USERNAME),
+    nama: asText_(row.NAMA),
+    level: asText_(row.LEVEL),
+    outlet: asText_(row.OUTLET_UTAMA),
+    appName: appName,
+    action: 'RESET_PASSWORD',
+    status: 'SUCCESS',
+    userAgent: userAgent,
+    message: 'Password direset mandiri via verifikasi No. HP dan tanggal lahir.'
+  });
+
+  return dataResponse_({ success: true, message: 'Password berhasil diperbarui. Silakan login dengan password baru.' });
+}
+
+
+/* =========================================================
+ * DAFTAR KARYAWAN AKTIF UNTUK PENANGGUNG JAWAB / PENANDATANGAN
+ * APJ V44
+ * ======================================================= */
+
+function getSignatureUsers_(ss, requestData) {
+  // Akses cukup memakai session login aktif; tidak wajib hak admin.
+  var profile = requireSession_(ss, requestData);
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var data = getSheetData_(sheet);
+  var includeInactive = truthy_(requestData.includeInactive || requestData.semuaStatus || false);
+  var users = [];
+  var seen = {};
+
+  data.rows.forEach(function(row) {
+    var status = upperText_(row.STATUS || row.AKTIF || 'AKTIF');
+    if (!includeInactive && status && ['AKTIF', 'ACTIVE', 'Y', 'YA', 'TRUE', '1'].indexOf(status) < 0) return;
+
+    var nama = asText_(
+      row.NAMA || row.NAMA_KARYAWAN || row.NAMA_LENGKAP || row.FULL_NAME ||
+      row.DISPLAY_NAME || row.NAME || row.USERNAME
+    ).trim();
+    var username = asText_(row.USERNAME).trim();
+    if (!nama) return;
+
+    var key = normalizeKey_(nama || username);
+    if (seen[key]) return;
+    seen[key] = true;
+
+    users.push({
+      username: username,
+      nama: nama,
+      label: nama,
+      value: nama,
+      level: asText_(row.LEVEL),
+      outletUtama: asText_(row.OUTLET_UTAMA || row.OUTLET),
+      outletAkses: asText_(row.OUTLET_AKSES),
+      status: status || 'AKTIF'
+    });
+  });
+
+  users.sort(function(a, b) { return a.nama.localeCompare(b.nama, 'id'); });
+
+  return dataResponse_({
+    success: true,
+    users: users,
+    karyawan: users,
+    signers: users,
+    penandatangan: users,
+    total: users.length,
+    requestedBy: publicUserProfile_(profile)
+  });
+}
+
+/* =========================================================
+ * ADMIN USER
+ * ======================================================= */
+
+function adminGetUsers_(ss, requestData) {
+  var admin = requireAdmin_(ss, requestData, 'userManagement');
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var data = getSheetData_(sheet);
+  var users = data.rows.map(function(row) {
+    return {
+      userId: asText_(row.USER_ID),
+      username: asText_(row.USERNAME),
+      nama: asText_(row.NAMA),
+      passwordMode: asText_(row.PASSWORD_MODE),
+      level: asText_(row.LEVEL),
+      outletUtama: asText_(row.OUTLET_UTAMA),
+      outletAkses: asText_(row.OUTLET_AKSES),
+      status: asText_(row.STATUS),
+      noHp: asText_(row.NO_HP),
+      email: asText_(row.EMAIL),
+      tanggalLahir: formatDateOnly_(row.TANGGAL_LAHIR),
+      lastLogin: asText_(row.LAST_LOGIN),
+      lastUpdate: asText_(row.LAST_UPDATE),
+      updatedBy: asText_(row.UPDATED_BY),
+      catatan: asText_(row.CATATAN)
+    };
+  });
+  return dataResponse_({ success: true, users: users, admin: publicUserProfile_(admin) });
+}
+
+function adminAddUser_(ss, requestData) {
+  var admin = requireAdmin_(ss, requestData, 'userManagement');
+  var payload = requestData.user || requestData;
+
+  var username = asText_(payload.username).trim();
+  var nama = asText_(payload.nama).trim();
+  var password = asText_(payload.password || payload.newPassword);
+  var level = upperText_(payload.level || 'KARYAWAN');
+  var outletUtama = upperText_(payload.outletUtama || payload.outlet || 'ALL');
+  var outletAkses = upperText_(payload.outletAkses || outletUtama);
+  var status = upperText_(payload.status || 'AKTIF');
+
+  if (!username || !nama || !password) return dataResponse_({ success: false, message: 'Username, nama, dan password wajib diisi.' });
+  if (findUserByUsername_(ss, username)) return dataResponse_({ success: false, message: 'Username sudah terdaftar.' });
+
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var headerMap = buildHeaderMapFromSheet_(sheet);
+  var id = generateNextId_(sheet, 'USR-', 4);
+  var salt = makeSalt_();
+  var passwordHash = hashPassword_(password, salt);
+
+  var rowObj = {
+    USER_ID: id,
+    USERNAME: username,
+    NAMA: nama,
+    PASSWORD_HASH: passwordHash,
+    PASSWORD_SALT: salt,
+    PASSWORD_MODE: 'HASH',
+    LEVEL: level,
+    OUTLET_UTAMA: outletUtama,
+    OUTLET_AKSES: outletAkses,
+    STATUS: status,
+    NO_HP: asText_(payload.noHp || payload.no_hp || ''),
+    EMAIL: asText_(payload.email || ''),
+    TANGGAL_LAHIR: payload.tanggalLahir || payload.tanggal_lahir || '',
+    LAST_LOGIN: '',
+    LAST_UPDATE: nowString_(),
+    UPDATED_BY: admin.username,
+    CATATAN: asText_(payload.catatan || '')
+  };
+
+  appendObjectRow_(sheet, headerMap, rowObj);
+  appendLoginLog_(ss, {
+    username: admin.username,
+    nama: admin.nama,
+    level: admin.level,
+    outlet: admin.outletUtama,
+    appName: 'CORE_ADMIN',
+    action: 'ADMIN_ADD_USER',
+    status: 'SUCCESS',
+    message: 'Tambah user ' + username
+  });
+
+  return dataResponse_({ success: true, message: 'User berhasil ditambahkan.', userId: id });
+}
+
+function adminUpdateUser_(ss, requestData) {
+  var admin = requireAdmin_(ss, requestData, 'userManagement');
+  var payload = requestData.user || requestData;
+  var username = asText_(payload.username).trim();
+  if (!username) return dataResponse_({ success: false, message: 'Username wajib diisi.' });
+
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var data = getSheetData_(sheet);
+  var target = findUserRowInfo_(data, username);
+  if (!target) return dataResponse_({ success: false, message: 'User tidak ditemukan.' });
+
+  var updates = {
+    NAMA: payload.nama,
+    LEVEL: payload.level ? upperText_(payload.level) : undefined,
+    OUTLET_UTAMA: payload.outletUtama || payload.outlet,
+    OUTLET_AKSES: payload.outletAkses,
+    STATUS: payload.status ? upperText_(payload.status) : undefined,
+    NO_HP: payload.noHp || payload.no_hp,
+    EMAIL: payload.email,
+    TANGGAL_LAHIR: payload.tanggalLahir || payload.tanggal_lahir,
+    CATATAN: payload.catatan,
+    LAST_UPDATE: nowString_(),
+    UPDATED_BY: admin.username
+  };
+
+  if (payload.password || payload.newPassword) {
+    var salt = makeSalt_();
+    updates.PASSWORD_HASH = hashPassword_(asText_(payload.password || payload.newPassword), salt);
+    updates.PASSWORD_SALT = salt;
+    updates.PASSWORD_MODE = 'HASH';
+  }
+
+  updateObjectRow_(sheet, data.headerMap, target.rowNumber, updates);
+  appendLoginLog_(ss, {
+    username: admin.username,
+    nama: admin.nama,
+    level: admin.level,
+    outlet: admin.outletUtama,
+    appName: 'CORE_ADMIN',
+    action: 'ADMIN_UPDATE_USER',
+    status: 'SUCCESS',
+    message: 'Update user ' + username
+  });
+
+  return dataResponse_({ success: true, message: 'User berhasil diperbarui.' });
+}
+
+function adminSetUserStatus_(ss, requestData) {
+  var admin = requireAdmin_(ss, requestData, 'userManagement');
+  var username = asText_(requestData.username).trim();
+  var status = upperText_(requestData.status || 'NONAKTIF');
+  if (!username) return dataResponse_({ success: false, message: 'Username wajib diisi.' });
+
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.USER);
+  var data = getSheetData_(sheet);
+  var target = findUserRowInfo_(data, username);
+  if (!target) return dataResponse_({ success: false, message: 'User tidak ditemukan.' });
+  updateObjectRow_(sheet, data.headerMap, target.rowNumber, {
+    STATUS: status,
+    LAST_UPDATE: nowString_(),
+    UPDATED_BY: admin.username
+  });
+  return dataResponse_({ success: true, message: 'Status user berhasil diubah.' });
+}
+
+/* =========================================================
+ * ADMIN MODULE AUTO ADD
+ * ======================================================= */
+
+function adminAddModule_(ss, requestData) {
+  var admin = requireAdmin_(ss, requestData, 'admin');
+  var payload = requestData.module || requestData;
+
+  var appGroup = upperText_(payload.appGroup || 'CORE');
+  var moduleName = asText_(payload.moduleName || payload.namaMenu).trim();
+  var parentMenu = asText_(payload.parentMenu || appGroup).trim();
+  var url = asText_(payload.url || '').trim();
+  var permissionKey = asText_(payload.permissionKey || camelCaseKey_(moduleName)).trim();
+  var status = upperText_(payload.status || 'NONAKTIF');
+  var icon = asText_(payload.icon || 'menu');
+
+  if (!moduleName || !permissionKey) return dataResponse_({ success: false, message: 'Nama modul dan permission key wajib diisi.' });
+
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.MODULE_ACCESS);
+  var data = getSheetData_(sheet);
+  for (var i = 0; i < data.rows.length; i++) {
+    if (normalizeKey_(data.rows[i].PERMISSION_KEY) === normalizeKey_(permissionKey)) {
+      return dataResponse_({ success: false, message: 'Permission key sudah ada di MODULE_ACCESS.' });
+    }
+  }
+
+  var moduleId = generateNextId_(sheet, 'MOD-', 3);
+  var moduleKey = upperText_(payload.moduleKey || permissionKey.replace(/([A-Z])/g, '_$1')).replace(/^_/, '');
+  var order = Number(payload.menuOrder || findNextMenuOrder_(data.rows, appGroup));
+
+  appendObjectRow_(sheet, data.headerMap, {
+    MODULE_ID: moduleId,
+    APP_GROUP: appGroup,
+    MODULE_KEY: moduleKey,
+    MODULE_NAME: moduleName,
+    PARENT_MENU: parentMenu,
+    URL: url,
+    PERMISSION_KEY: permissionKey,
+    MENU_ORDER: order,
+    IS_MENU: upperText_(payload.isMenu || 'Y'),
+    STATUS: status,
+    ICON: icon,
+    CATATAN: asText_(payload.catatan || 'Ditambahkan dari Admin Setup')
+  });
+
+  ensurePermissionColumn_(ss, permissionKey, appGroup);
+
+  appendLoginLog_(ss, {
+    username: admin.username,
+    nama: admin.nama,
+    level: admin.level,
+    outlet: admin.outletUtama,
+    appName: 'CORE_ADMIN',
+    action: 'ADMIN_ADD_MODULE',
+    status: 'SUCCESS',
+    message: 'Tambah modul ' + moduleName + ' / ' + permissionKey
+  });
+
+  return dataResponse_({ success: true, message: 'Modul berhasil ditambahkan.', moduleId: moduleId, permissionKey: permissionKey });
+}
+
+function ensurePermissionColumn_(ss, permissionKey, appGroup) {
+  var sheet = getSheetOrThrow_(ss, CONFIG.SHEETS.PERMISSION);
+  var lastCol = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var hm = buildHeaderMap_(header);
+  var normalized = normalizeHeader_(permissionKey);
+  if (hm[normalized] != null) return;
+
+  // Sisipkan sebelum STATUS kalau ada, supaya STATUS/CATATAN tetap di belakang.
+  var statusIndex = hm[normalizeHeader_('STATUS')];
+  var insertCol = statusIndex != null ? statusIndex + 1 : lastCol + 1;
+  sheet.insertColumnBefore(insertCol);
+  sheet.getRange(1, insertCol).setValue(permissionKey);
+
+  var rows = sheet.getLastRow();
+  if (rows < 2) return;
+  var values = sheet.getRange(2, 1, rows - 1, sheet.getLastColumn()).getValues();
+  var newHeader = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var newHm = buildHeaderMap_(newHeader);
+  var ixLevel = newHm[normalizeHeader_('LEVEL')];
+  var ixPerm = newHm[normalizeHeader_(permissionKey)];
+
+  for (var r = 0; r < values.length; r++) {
+    var level = upperText_(values[r][ixLevel]);
+    var allowed = 'N';
+    if (CONFIG.FULL_ACCESS_LEVELS.indexOf(level) >= 0) allowed = 'Y';
+    else if (appGroup === 'KEUANGAN' && level === 'KEUANGAN') allowed = 'Y';
+    else if (appGroup === 'ABSENSI' && level === 'HR') allowed = 'Y';
+    else if (appGroup === 'INVENTORY' && level === 'SUPERVISOR') allowed = 'Y';
+    sheet.getRange(r + 2, ixPerm + 1).setValue(allowed);
+  }
+}
+
+/* =========================================================
+ * PROFILE / PERMISSION
+ * ======================================================= */
+
+function createSessionForUsername_(username) {
+  var token = Utilities.getUuid();
+  var payload = {
+    username: asText_(username),
+    createdAt: nowString_()
+  };
+  CacheService.getScriptCache().put(getSessionCacheKey_(token), JSON.stringify(payload), CONFIG.SESSION_TTL_SECONDS);
+  return token;
+}
+
+function getSessionCacheKey_(token) {
+  return 'APJ_CORE_SESSION_' + asText_(token);
+}
+
+function getSessionTokenFromRequest_(requestData) {
+  return asText_(requestData.sessionToken || requestData.token || requestData.authToken);
+}
+
+function getSessionProfile_(ss, requestData, refresh) {
+  var token = getSessionTokenFromRequest_(requestData || {});
+  if (!token) return null;
+  var raw = CacheService.getScriptCache().get(getSessionCacheKey_(token));
+  if (!raw) return null;
+
+  var session;
+  try {
+    session = JSON.parse(raw);
+  } catch (err) {
+    return null;
+  }
+
+  var profile = buildUserProfile_(ss, session.username);
+  if (!profile) return null;
+  profile.sessionToken = token;
+
+  if (refresh !== false) {
+    CacheService.getScriptCache().put(getSessionCacheKey_(token), JSON.stringify(session), CONFIG.SESSION_TTL_SECONDS);
+  }
+  return profile;
+}
+
+function requireSession_(ss, requestData) {
+  var profile = getSessionProfile_(ss, requestData, true);
+  if (!profile) throw new Error('Session tidak valid atau sudah kedaluwarsa. Silakan login ulang.');
+  return profile;
+}
+
+function requireAdmin_(ss, requestData, permissionKey) {
+  var profile = requireSession_(ss, requestData);
+  if (isAdminProfile_(profile)) return profile;
+  if (permissionKey && profileHasPermission_(profile, permissionKey)) return profile;
+  throw new Error('Akses admin ditolak.');
+}
+
+function buildUserProfile_(ss, username) {
+  var row = findUserByUsername_(ss, username);
+  if (!row) return null;
+  var level = upperText_(row.LEVEL || 'KARYAWAN');
+  var outletUtama = upperText_(row.OUTLET_UTAMA || (isFullAccessLevel_(level) ? 'ALL' : ''));
+  var outletAkses = upperText_(row.OUTLET_AKSES || outletUtama);
+  var permissions = readPermissionsForLevel_(ss, level);
+
+  return {
+    userId: asText_(row.USER_ID),
+    username: asText_(row.USERNAME),
+    nama: asText_(row.NAMA),
+    level: level,
+    outlet: outletUtama,
+    outletUtama: outletUtama,
+    outletAkses: outletAkses,
+    status: upperText_(row.STATUS),
+    noHp: asText_(row.NO_HP),
+    email: asText_(row.EMAIL),
+    tanggalLahir: formatDateOnly_(row.TANGGAL_LAHIR),
+    permissions: permissions
+  };
+}
+
+function publicUserProfile_(profile) {
+  return {
+    userId: profile.userId,
+    username: profile.username,
+    nama: profile.nama,
+    level: profile.level,
+    outlet: profile.outletUtama,
+    outletUtama: profile.outletUtama,
+    outletAkses: profile.outletAkses,
+    status: profile.status,
+    noHp: profile.noHp,
+    email: profile.email,
+    tanggalLahir: profile.tanggalLahir,
+    permissions: profile.permissions || {}
+  };
+}
+
+function readPermissionsForLevel_(ss, level) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.PERMISSION);
+  if (!sheet || sheet.getLastRow() < 2) return {};
+
+  var values = sheet.getDataRange().getValues();
+  if (values.length < 2) return {};
+
+  var header = values[0].map(function(h) { return asText_(h).trim(); });
+  var hm = buildHeaderMap_(header);
+  var ixLevel = hm[normalizeHeader_('LEVEL')];
+  var ixStatus = hm[normalizeHeader_('STATUS')];
+  var levelKey = normalizeKey_(level);
+  var result = {};
+
+  for (var r = 1; r < values.length; r++) {
+    if (normalizeKey_(values[r][ixLevel]) !== levelKey) continue;
+
+    for (var c = 0; c < header.length; c++) {
+      var rawKey = asText_(header[c]).trim();
+      var normKey = normalizeHeader_(rawKey);
+      if (!rawKey || ['LEVEL', 'STATUS', 'CATATAN', 'LAST_UPDATE'].indexOf(normKey) >= 0) continue;
+
+      var yes = permissionYes_(values[r][c]);
+      // Simpan dua bentuk supaya kompatibel:
+      // - camelCase asli dari header, misal inputStok
+      // - normalized uppercase, misal INPUTSTOK
+      result[rawKey] = yes;
+      result[normKey] = yes;
+    }
+
+    result._status = ixStatus != null ? asText_(values[r][ixStatus] || 'AKTIF') : 'AKTIF';
+    return result;
+  }
+
+  return result;
+}
+
+function profileHasPermission_(profile, permissionKey) {
+  if (!profile) return false;
+  if (isFullAccessLevel_(profile.level)) return true;
+  var key = asText_(permissionKey);
+  if (!key) return true;
+  var perms = profile.permissions || {};
+  return !!perms[key] || !!perms[normalizeHeader_(key)];
+}
+
+function isAdminProfile_(profile) {
+  return !!profile && CONFIG.ADMIN_LEVELS.indexOf(upperText_(profile.level)) >= 0;
+}
+
+function isFullAccessLevel_(level) {
+  return CONFIG.FULL_ACCESS_LEVELS.indexOf(upperText_(level)) >= 0;
+}
+
+/* =========================================================
+ * PASSWORD
+ * ======================================================= */
+
+function verifyPassword_(passwordInput, storedHash, storedSalt, passwordMode) {
+  var mode = upperText_(passwordMode || 'PLAIN');
+  var rawStored = asText_(storedHash);
+  var salt = asText_(storedSalt);
+
+  if (mode === 'HASH') {
+    if (!rawStored) return { ok: false, mode: 'HASH' };
+    var expected = hashPassword_(passwordInput, salt);
+    if (safeCompare_(rawStored, expected)) return { ok: true, mode: 'HASH' };
+
+    // Kompatibel kalau ada hash lama tanpa salt.
+    if (!salt && safeCompare_(rawStored, sha256Hex_(asText_(passwordInput)))) return { ok: true, mode: 'HASH' };
+    return { ok: false, mode: 'HASH' };
+  }
+
+  // Mode awal migrasi: PASSWORD_HASH berisi password polos.
+  if (safeCompare_(rawStored, asText_(passwordInput))) return { ok: true, mode: 'PLAIN' };
+  return { ok: false, mode: 'PLAIN' };
+}
+
+function migratePlainPasswordToHash_(sheet, headerMap, rowNumber, plainPassword) {
+  var salt = makeSalt_();
+  var passwordHash = hashPassword_(plainPassword, salt);
+  setCellByHeader_(sheet, headerMap, rowNumber, 'PASSWORD_HASH', passwordHash);
+  setCellByHeader_(sheet, headerMap, rowNumber, 'PASSWORD_SALT', salt);
+  setCellByHeader_(sheet, headerMap, rowNumber, 'PASSWORD_MODE', 'HASH');
+  setCellByHeader_(sheet, headerMap, rowNumber, 'LAST_UPDATE', nowString_());
+  setCellByHeader_(sheet, headerMap, rowNumber, 'UPDATED_BY', 'AUTO_MIGRATE');
+}
+
+function hashPassword_(password, salt) {
+  return sha256Hex_(CONFIG.PASSWORD_HASH_PREFIX + '|' + asText_(salt) + '|' + asText_(password));
+}
+
+function sha256Hex_(text) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, asText_(text), Utilities.Charset.UTF_8);
+  return bytes.map(function(b) {
+    var v = (b < 0 ? b + 256 : b).toString(16);
+    return v.length === 1 ? '0' + v : v;
+  }).join('');
+}
+
+function makeSalt_() {
+  return Utilities.getUuid().replace(/-/g, '') + String(new Date().getTime());
+}
+
+function safeCompare_(a, b) {
+  a = asText_(a);
+  b = asText_(b);
+  if (a.length !== b.length) return false;
+  var out = 0;
+  for (var i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return out === 0;
+}
+
+/* =========================================================
+ * SHEET DATA HELPERS
+ * ======================================================= */
+
+function getSpreadsheet_() {
+  if (CONFIG.SHEET_ID) return SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  return SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function getSheetOrThrow_(ss, sheetName) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('Sheet tidak ditemukan: ' + sheetName);
+  return sheet;
+}
+
+function getSheetData_(sheet) {
+  var values = sheet.getDataRange().getValues();
+  if (!values.length) return { header: [], headerMap: {}, rows: [] };
+  var header = values[0].map(function(h) { return asText_(h).trim(); });
+  var headerMap = buildHeaderMap_(header);
+  var rows = [];
+  for (var r = 1; r < values.length; r++) {
+    var isEmpty = values[r].every(function(v) { return asText_(v) === ''; });
+    if (isEmpty) continue;
+    var obj = {};
+    for (var c = 0; c < header.length; c++) {
+      var key = normalizeHeader_(header[c]);
+      if (!key) continue;
+      obj[key] = values[r][c];
+    }
+    obj._rowNumber = r + 1;
+    rows.push(obj);
+  }
+  return { header: header, headerMap: headerMap, rows: rows };
+}
+
+function getSheetDataCachedRuntime_(sheet) {
+  if (!sheet) return { header: [], headerMap: {}, rows: [] };
+  var key = 'SHEET_DATA_' + sheet.getParent().getId() + '_' + sheet.getName();
+  if (APJ_CORE_RUNTIME_CACHE[key]) return APJ_CORE_RUNTIME_CACHE[key];
+  var data = getSheetData_(sheet);
+  APJ_CORE_RUNTIME_CACHE[key] = data;
+  return data;
+}
+
+function clearRuntimeSheetCache_(sheet) {
+  if (!sheet) return;
+  var key = 'SHEET_DATA_' + sheet.getParent().getId() + '_' + sheet.getName();
+  delete APJ_CORE_RUNTIME_CACHE[key];
+}
+
+function buildHeaderMapFromSheet_(sheet) {
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  return buildHeaderMap_(header);
+}
+
+function buildHeaderMap_(header) {
+  var hm = {};
+  for (var i = 0; i < header.length; i++) {
+    var key = normalizeHeader_(header[i]);
+    if (key) hm[key] = i;
+  }
+  return hm;
+}
+
+function normalizeHeader_(value) {
+  return asText_(value).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function setCellByHeader_(sheet, headerMap, rowNumber, headerName, value) {
+  return writeValueByHeader_(sheet, headerMap, rowNumber, headerName, value);
+}
+
+function appendObjectRow_(sheet, headerMap, obj) {
+  var lastCol = sheet.getLastColumn();
+  var rowNumber = sheet.getLastRow() + 1;
+  var row = new Array(lastCol).fill('');
+
+  Object.keys(obj).forEach(function(key) {
+    var ix = headerMap[normalizeHeader_(key)];
+    if (ix == null) return;
+    row[ix] = textValueForHeader_(key, obj[key]);
+  });
+
+  sheet.getRange(rowNumber, 1, 1, lastCol).setValues([row]);
+  clearRuntimeSheetCache_(sheet);
+}
+
+function updateObjectRow_(sheet, headerMap, rowNumber, updates) {
+  Object.keys(updates).forEach(function(key) {
+    if (updates[key] === undefined) return;
+    setCellByHeader_(sheet, headerMap, rowNumber, key, updates[key]);
+  });
+  clearRuntimeSheetCache_(sheet);
+}
+
+
+function mergePayloadObjects_() {
+  var out = {};
+  for (var i = 0; i < arguments.length; i++) {
+    var obj = arguments[i];
+    if (!obj || typeof obj !== 'object') continue;
+    Object.keys(obj).forEach(function(k) { out[k] = obj[k]; });
+  }
+  return out;
+}
+
+function pickValue_(obj, keys) {
+  if (!obj || typeof obj !== 'object') return '';
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    if (obj[key] !== undefined && obj[key] !== null && asText_(obj[key]) !== '') return obj[key];
+  }
+  return '';
+}
+
+function findHeaderIndexByCandidates_(headerMap, candidates) {
+  for (var i = 0; i < candidates.length; i++) {
+    var ix = headerMap[normalizeHeader_(candidates[i])];
+    if (ix != null) return ix;
+  }
+  return null;
+}
+
+function writeCellText_(sheet, rowNumber, colNumber, value) {
+  var cell = sheet.getRange(rowNumber, colNumber);
+  cell.setValue(asText_(value));
+}
+
+function writeCellFormulaText_(sheet, rowNumber, colNumber, value) {
+  var cell = sheet.getRange(rowNumber, colNumber);
+  var s = asText_(value);
+  if (!s) {
+    cell.clearContent();
+  } else {
+    cell.setFormula(textFormula_(s));
+  }
+}
+
+function normalizeBirthDateForSheet_(value) {
+  var s = asText_(value).trim();
+  if (!s) return '';
+  var mIso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (mIso) return mIso[3] + '/' + mIso[2] + '/' + mIso[1];
+  var mDmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (mDmy) {
+    var y = mDmy[3].length === 2 ? '20' + mDmy[3] : mDmy[3];
+    return String(mDmy[1]).padStart(2, '0') + '/' + String(mDmy[2]).padStart(2, '0') + '/' + y;
+  }
+  return s;
+}
+
+
+function normalizePhoneForCompare_(value) {
+  var digits = asText_(value).replace(/[^0-9]/g, '');
+  return digits;
+}
+
+function phoneMatches_(inputPhone, storedPhone) {
+  var a = normalizePhoneForCompare_(inputPhone);
+  var b = normalizePhoneForCompare_(storedPhone);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a.replace(/^0+/, '') === b.replace(/^0+/, '');
+}
+
+function birthDateKey_(value) {
+  var normalized = normalizeBirthDateForSheet_(value);
+  var m = asText_(normalized).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (!m) return '';
+  var y = m[3].length === 2 ? '20' + m[3] : m[3];
+  return String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0') + '-' + y;
+}
+
+function birthDateMatches_(inputDate, storedDate) {
+  var a = birthDateKey_(inputDate);
+  var b = birthDateKey_(storedDate);
+  return !!a && !!b && a === b;
+}
+
+function findUserByUsername_(ss, username) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.USER);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var data = getSheetData_(sheet);
+  var info = findUserRowInfo_(data, username);
+  return info ? info.row : null;
+}
+
+function findUserRowInfo_(data, username) {
+  var key = normalizeKey_(username);
+  for (var i = 0; i < data.rows.length; i++) {
+    if (normalizeKey_(data.rows[i].USERNAME) === key) {
+      return { rowNumber: data.rows[i]._rowNumber, row: data.rows[i] };
+    }
+  }
+  return null;
+}
+
+function updateUserLoginInfo_(sheet, headerMap, rowNumber) {
+  setCellByHeader_(sheet, headerMap, rowNumber, 'LAST_LOGIN', nowString_());
+  setCellByHeader_(sheet, headerMap, rowNumber, 'LAST_UPDATE', nowString_());
+}
+
+function generateNextId_(sheet, prefix, digits) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var lastRow = sheet.getLastRow();
+    var max = 0;
+    if (lastRow >= 2) {
+      var values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      values.forEach(function(row) {
+        var v = asText_(row[0]);
+        if (v.indexOf(prefix) !== 0) return;
+        var n = Number(v.replace(prefix, '').replace(/[^0-9]/g, ''));
+        if (!isNaN(n) && n > max) max = n;
+      });
+    }
+    return prefix + padNumber_(max + 1, digits);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getOrCreateBirthdaySheet_(ss) {
+  var sheet = ss.getSheetByName(CONFIG.SHEETS.BIRTHDAY_WISH);
+  if (sheet) return sheet;
+  sheet = ss.insertSheet(CONFIG.SHEETS.BIRTHDAY_WISH);
+  sheet.appendRow([
+    'UCAPAN_ID', 'TANGGAL', 'TAHUN', 'USERNAME_ULANG_TAHUN', 'NAMA_ULANG_TAHUN',
+    'OUTLET_ULANG_TAHUN', 'USERNAME_PENGIRIM', 'NAMA_PENGIRIM', 'LEVEL_PENGIRIM',
+    'OUTLET_PENGIRIM', 'UCAPAN', 'STATUS', 'CREATED_AT', 'CATATAN'
+  ]);
+  return sheet;
+}
+
+/* =========================================================
+ * LOGGING
+ * ======================================================= */
+
+function appendLoginLog_(ss, info) {
+  try {
+    var sheet = ss.getSheetByName(CONFIG.SHEETS.LOG_LOGIN);
+    if (!sheet) return;
+    var id = generateNextId_(sheet, 'LOG-', 6);
+    sheet.appendRow([
+      id,
+      nowString_(),
+      asText_(info.username),
+      asText_(info.nama),
+      asText_(info.level),
+      asText_(info.outlet),
+      asText_(info.appName || 'APJ'),
+      asText_(info.action || 'ACTION'),
+      asText_(info.status || 'INFO'),
+      asText_(info.sessionId),
+      asText_(info.userAgent),
+      asText_(info.ipAddress),
+      asText_(info.message)
+    ]);
+  } catch (err) {
+    // Jangan gagalkan login hanya karena log error.
+  }
+}
+
+/* =========================================================
+ * REQUEST / RESPONSE / UTIL
+ * ======================================================= */
+
+function parseRequest_(e, method) {
+  var data = {};
+  if (method === 'POST' && e && e.postData && e.postData.contents) {
+    try {
+      data = JSON.parse(e.postData.contents || '{}');
+    } catch (err) {
+      data = {};
+    }
+  }
+  if (e && e.parameter) {
+    Object.keys(e.parameter).forEach(function(k) {
+      if (data[k] === undefined) data[k] = e.parameter[k];
+    });
+  }
+  return data || {};
+}
+
+function dataResponse_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function asText_(value) {
+  if (value === null || value === undefined) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') return formatDateOnly_(value);
+  return String(value).trim();
+}
+
+function upperText_(value) {
+  return asText_(value).toUpperCase();
+}
+
+function normalizeKey_(value) {
+  return asText_(value).toLowerCase().replace(/\s+/g, '').trim();
+}
+
+function permissionYes_(value) {
+  var v = upperText_(value);
+  return v === 'Y' || v === 'YES' || v === 'TRUE' || v === '1' || v === 'AKTIF';
+}
+
+function truthy_(value) {
+  return permissionYes_(value);
+}
+
+function nowString_() {
+  return Utilities.formatDate(new Date(), CONFIG.TZ, 'dd/MM/yyyy HH:mm:ss');
+}
+
+function formatDateOnly_(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Utilities.formatDate(value, CONFIG.TZ, 'dd/MM/yyyy');
+  }
+  return asText_(value);
+}
+
+function formatSheetTime_(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Utilities.formatDate(value, CONFIG.TZ, 'HH:mm');
+  }
+  return asText_(value);
+}
+
+function getDayMonth_(value) {
+  if (!value) return null;
+  var dateObj = null;
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    dateObj = value;
+  } else {
+    var s = asText_(value);
+    var m;
+    if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/))) {
+      dateObj = new Date(Number(m[3].length === 2 ? '20' + m[3] : m[3]), Number(m[2]) - 1, Number(m[1]));
+    } else if ((m = s.match(/^(\d{1,2})[\/\-](\d{1,2})$/))) {
+      dateObj = new Date(new Date().getFullYear(), Number(m[2]) - 1, Number(m[1]));
+    } else if ((m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/))) {
+      dateObj = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    } else if ((m = s.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+)(?:\s+(\d{2,4}))?$/i))) {
+      var mi = monthNameIndex_(m[2]);
+      if (mi >= 0) dateObj = new Date(Number(m[3] || new Date().getFullYear()), mi, Number(m[1]));
+    }
+  }
+  if (!dateObj || isNaN(dateObj.getTime())) return null;
+  var dd = Utilities.formatDate(dateObj, CONFIG.TZ, 'dd');
+  var mm = Utilities.formatDate(dateObj, CONFIG.TZ, 'MM');
+  return { key: dd + '-' + mm, display: dd + '/' + mm };
+}
+
+function monthNameIndex_(value) {
+  var key = asText_(value).toLowerCase().replace(/[^a-z]/g, '');
+  var map = {
+    januari:0, january:0, jan:0,
+    februari:1, february:1, feb:1,
+    maret:2, march:2, mar:2,
+    april:3, apr:3,
+    mei:4, may:4,
+    juni:5, june:5, jun:5,
+    juli:6, july:6, jul:6,
+    agustus:7, august:7, aug:7, agu:7,
+    september:8, sep:8, sept:8,
+    oktober:9, october:9, okt:9, oct:9,
+    november:10, nov:10,
+    desember:11, december:11, des:11, dec:11
+  };
+  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : -1;
+}
+
+function padNumber_(num, digits) {
+  var s = String(num);
+  while (s.length < digits) s = '0' + s;
+  return s;
+}
+
+function camelCaseKey_(text) {
+  var parts = asText_(text).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/);
+  if (!parts.length || !parts[0]) return 'moduleKey';
+  var out = parts[0];
+  for (var i = 1; i < parts.length; i++) out += parts[i].charAt(0).toUpperCase() + parts[i].slice(1);
+  return out;
+}
+
+function findNextMenuOrder_(rows, appGroup) {
+  var max = 0;
+  rows.forEach(function(row) {
+    if (appGroup && upperText_(row.APP_GROUP) !== upperText_(appGroup)) return;
+    var n = Number(row.MENU_ORDER || 0);
+    if (!isNaN(n) && n > max) max = n;
+  });
+  return max + 10;
+}
+
+
+/* =========================================================
+ * APP-V.4.5 OBSERVABILITY: AUDIT LOG, ERROR LOG, HEALTH CHECK
+ * - Backend-only. Tidak mengubah kontrak API lama.
+ * - Semua helper fail-safe: gagal log tidak boleh memutus request utama.
+ * ======================================================= */
+var APJ_CORE_AUDIT_HEADERS_V45 = ['Timestamp','App','Username','Nama','Role','Modul','Action','Target ID','Status','Message','Data Ringkas'];
+var APJ_CORE_ERROR_HEADERS_V45 = ['Timestamp','App','Username','Modul','Action','Message','Stack','Payload Ringkas','User Agent'];
+var APJ_CORE_HEALTH_HEADERS_V45 = ['Timestamp','App','Status','Message','Spreadsheet ID','Spreadsheet Name','Data Ringkas'];
+
+function setupObservabilityCoreV45_(ss, payload) {
+  ss = ss || getSpreadsheet_();
+  ensureSheetWithHeadersCoreV45_(ss, CONFIG.SHEETS.AUDIT_LOG || 'AUDIT_LOG', APJ_CORE_AUDIT_HEADERS_V45);
+  ensureSheetWithHeadersCoreV45_(ss, CONFIG.SHEETS.ERROR_LOG || 'ERROR_LOG', APJ_CORE_ERROR_HEADERS_V45);
+  ensureSheetWithHeadersCoreV45_(ss, CONFIG.SHEETS.HEALTH_CHECK || 'HEALTH_CHECK', APJ_CORE_HEALTH_HEADERS_V45);
+  appendHealthCoreV45_(ss, { status: 'READY', message: 'Observability Core User siap.', data: { sheets: ['AUDIT_LOG','ERROR_LOG','HEALTH_CHECK'] } });
+  return dataResponse_({ success: true, message: 'Observability Core User siap: AUDIT_LOG, ERROR_LOG, dan HEALTH_CHECK.', sheets: ['AUDIT_LOG','ERROR_LOG','HEALTH_CHECK'], version: 'APP-V.4.5_FIX' });
+}
+
+function healthCheckCoreV45_(ss, payload) {
+  ss = ss || getSpreadsheet_();
+  var required = [CONFIG.SHEETS.USER, CONFIG.SHEETS.PERMISSION, CONFIG.SHEETS.MODULE_ACCESS, CONFIG.SHEETS.OUTLET, CONFIG.SHEETS.LOG_LOGIN, CONFIG.SHEETS.BIRTHDAY_WISH];
+  var sheets = required.map(function(name) {
+    var sh = ss.getSheetByName(name);
+    return { name: name, exists: !!sh, rows: sh ? sh.getLastRow() : 0, cols: sh ? sh.getLastColumn() : 0 };
+  });
+  var audit = ss.getSheetByName(CONFIG.SHEETS.AUDIT_LOG || 'AUDIT_LOG');
+  var error = ss.getSheetByName(CONFIG.SHEETS.ERROR_LOG || 'ERROR_LOG');
+  var health = ensureSheetWithHeadersCoreV45_(ss, CONFIG.SHEETS.HEALTH_CHECK || 'HEALTH_CHECK', APJ_CORE_HEALTH_HEADERS_V45);
+  var missing = sheets.filter(function(x) { return !x.exists; }).map(function(x) { return x.name; });
+  var status = missing.length ? 'WARNING' : 'OK';
+  var response = {
+    success: true,
+    app: 'APJ_CORE_USER',
+    version: 'APP-V.4.5_FIX',
+    serverTime: nowString_(),
+    spreadsheetId: ss.getId(),
+    spreadsheetName: ss.getName(),
+    sheets: sheets,
+    observability: {
+      auditLog: !!audit,
+      errorLog: !!error,
+      healthCheck: !!health,
+      auditRows: audit ? Math.max(0, audit.getLastRow() - 1) : 0,
+      errorRows: error ? Math.max(0, error.getLastRow() - 1) : 0,
+      healthRows: health ? Math.max(0, health.getLastRow() - 1) : 0
+    },
+    status: status,
+    message: missing.length ? ('Sheet hilang: ' + missing.join(', ')) : 'Health check Core User OK'
+  };
+  appendHealthCoreV45_(ss, { status: status, message: response.message, data: { requiredSheets: sheets, observability: response.observability } });
+  return dataResponse_(response);
+}
+
+function appendHealthCoreV45_(ss, info) {
+  try {
+    ss = ss || getSpreadsheet_();
+    var sh = ensureSheetWithHeadersCoreV45_(ss, CONFIG.SHEETS.HEALTH_CHECK || 'HEALTH_CHECK', APJ_CORE_HEALTH_HEADERS_V45);
+    sh.appendRow([nowString_(), 'APJ_CORE_USER', String(info.status || 'OK'), String(info.message || ''), ss.getId(), ss.getName(), compactJsonCoreV45_(info.data)]);
+  } catch (ignore) {}
+}
+
+function logClientErrorCoreV45_(ss, payload) {
+  ss = ss || getSpreadsheet_();
+  appendErrorCoreV45_(ss, {
+    username: payload.username || payload.user || '',
+    modul: payload.page || payload.modul || 'FRONTEND',
+    action: payload.actionName || payload.sourceAction || 'CLIENT_ERROR',
+    message: payload.message || payload.error || 'Client error',
+    stack: payload.stack || '',
+    payload: payload,
+    userAgent: payload.userAgent || ''
+  });
+  return dataResponse_({ success: true, message: 'Client error dicatat.', version: 'APP-V.4.5' });
+}
+
+function logServerErrorCoreV45_(err, payload, action) {
+  try {
+    var ss = getSpreadsheet_();
+    appendErrorCoreV45_(ss, {
+      username: payload && payload.username,
+      modul: 'CORE_USER',
+      action: action || (payload && payload.action) || 'SERVER_ERROR',
+      message: err && err.message ? err.message : String(err),
+      stack: err && err.stack ? err.stack : '',
+      payload: payload || {},
+      userAgent: payload && payload.userAgent
+    });
+  } catch (ignore) {}
+}
+
+function appendErrorCoreV45_(ss, info) {
+  try {
+    var sh = ensureSheetWithHeadersCoreV45_(ss, CONFIG.SHEETS.ERROR_LOG || 'ERROR_LOG', APJ_CORE_ERROR_HEADERS_V45);
+    sh.appendRow([nowString_(), 'APJ_CORE_USER', asText_(info.username), asText_(info.modul), asText_(info.action), asText_(info.message), asText_(info.stack), compactJsonCoreV45_(info.payload), asText_(info.userAgent)]);
+  } catch (ignore) {}
+}
+
+function ensureSheetWithHeadersCoreV45_(ss, name, headers) {
+  var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  if (sh.getLastRow() < 1) sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  else {
+    var current = sh.getRange(1, 1, 1, Math.max(headers.length, sh.getLastColumn())).getDisplayValues()[0];
+    var changed = false;
+    headers.forEach(function(h, i) { if (!current[i]) { current[i] = h; changed = true; } });
+    if (changed) sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+  return sh;
+}
+
+function compactJsonCoreV45_(value) {
+  try {
+    var text = JSON.stringify(value || {});
+    return text.length > 800 ? text.slice(0, 800) + '…' : text;
+  } catch (err) { return ''; }
+}

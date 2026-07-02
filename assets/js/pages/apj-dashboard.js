@@ -51,7 +51,7 @@
   let homeSilentRefreshTimer = null;
   let homeSilentRefreshRunning = false;
 
-  const MENU_ITEMS = [
+  const MENU_ITEMS = configuredMenuItems([
     { module:'Inventori', group:'Inventori / Dashboard', label:'Dashboard Inventory', href:'dashboard-inventory.html', permission:['inventory','lihatStok','inputStok'], desc:'Ringkasan stok, produksi, transfer, outlet, dan audit.', tone:'blue' },
     { module:'Inventori', group:'Inventori / Stok Gudang', label:'Input Stok', href:'input-stok.html', permission:['inputStok'], desc:'Barang masuk dari supplier/pembelian.', tone:'emerald' },
     { module:'Inventori', group:'Inventori / Stok Gudang', label:'Output Stok', href:'output-stok.html', permission:['outputStok'], desc:'Barang keluar gudang/non-produksi.', tone:'rose' },
@@ -68,9 +68,34 @@
     { module:'HR / Absensi', group:'HR / Absensi / Absensi', label:'Rekap Absensi', href:'rekap-absensi.html', permission:['rekapAbsensi','absensiAdmin'], desc:'Rekap hadir, terlambat, dan belum checkout.', tone:'blue' },
     { module:'HR / Absensi', group:'HR / Absensi / Karyawan', label:'Data Karyawan', href:'hr-karyawan.html', permission:['dataKaryawan','absensiAdmin'], desc:'Data karyawan, shift, jadwal, dan akses outlet.', tone:'slate' },
     { module:'Keuangan', group:'Keuangan / Dashboard', label:'Dashboard Keuangan', href:'#', permission:['keuangan','dashboardKeuangan'], desc:'Ringkasan kas, bank, biaya, dan laporan.', tone:'emerald', comingSoon:true }
-  ];
+  ]);
 
   document.addEventListener('DOMContentLoaded', initDashboard);
+
+  function configuredMenuItems(fallback) {
+    const configRows = window.APJ_CONFIG && window.APJ_CONFIG.menu && Array.isArray(window.APJ_CONFIG.menu.items)
+      ? window.APJ_CONFIG.menu.items
+      : [];
+    if (!configRows.length) return fallback;
+    return configRows
+      .filter(function (item) {
+        const href = item.href || item.url || '';
+        return href && item.module !== 'APJ Central';
+      })
+      .map(function (item) {
+        return {
+          module: item.module || '',
+          group: item.group || item.module || '',
+          label: item.label || '',
+          href: item.comingSoon ? '#' : (item.href || item.url || '#'),
+          permission: Array.isArray(item.permission) ? item.permission : String(item.permission || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean),
+          desc: item.desc || '',
+          tone: item.tone || 'blue',
+          comingSoon: !!item.comingSoon,
+          admin: !!item.admin
+        };
+      });
+  }
 
   function initDashboard() {
     bindSidebarInteractions();

@@ -93,6 +93,54 @@ window.APJ_CONFIG = window.APJ_CONFIG || {
     kategoriTransaksi: 'kategoriTransaksi',
     laporanKas: 'laporanKas'
   },
+  menu: {
+    items: [
+      { module: 'APJ Central', group: 'Utama', label: 'Dashboard Utama', href: 'dashboard.html', moduleKey: 'DASHBOARD_UTAMA', permission: ['dashboardUtama', 'dashboard'], tone: 'blue', desc: 'Home umum APJ, kalender, ulang tahun, pengumuman, dan shortcut sesuai akses.' },
+      { module: 'Inventori', group: 'Inventori / Dashboard', label: 'Dashboard Inventory', href: 'dashboard-inventory.html', moduleKey: 'DASHBOARD_INVENTORY', permission: ['dashboardInventory', 'inventory', 'lihatStok', 'inputStok'], tone: 'blue', desc: 'Ringkasan stok, produksi, transfer, outlet, dan audit.' },
+      { module: 'Inventori', group: 'Inventori / Stok Gudang', label: 'Input Stok', href: 'input-stok.html', moduleKey: 'INPUT_STOK', permission: ['inputStok'], tone: 'emerald', desc: 'Barang masuk dari supplier/pembelian.' },
+      { module: 'Inventori', group: 'Inventori / Stok Gudang', label: 'Output Stok', href: 'output-stok.html', moduleKey: 'OUTPUT_STOK', permission: ['outputStok'], tone: 'rose', desc: 'Barang keluar gudang/non-produksi.' },
+      { module: 'Inventori', group: 'Inventori / Dapur Produksi', label: 'Preparasi', href: 'preparasi.html', moduleKey: 'PREPARASI', permission: ['preparasi'], tone: 'amber', desc: 'Bahan mentah menjadi semi-finished.' },
+      { module: 'Inventori', group: 'Inventori / Dapur Produksi', label: 'Produksi', href: 'produksi.html', moduleKey: 'PRODUKSI', permission: ['produksi'], tone: 'amber', desc: 'Semi-finished menjadi produk siap transfer.' },
+      { module: 'Inventori', group: 'Inventori / Dapur', label: 'Transfer Item', href: 'transfer-produksi.html', moduleKey: 'TRANSFER_ITEM', permission: ['transferItem', 'transferProduksi', 'transferProduk'], tone: 'violet', desc: 'Kirim item/produk pusat ke outlet.' },
+      { module: 'Inventori', group: 'Inventori / Outlet', label: 'Produk Outlet', href: 'produk-outlet.html', moduleKey: 'PRODUK_OUTLET', permission: ['produkOutlet'], tone: 'sky', desc: 'Stok, terjual, dan opname outlet.' },
+      { module: 'Inventori', group: 'Inventori / Stok Gudang', label: 'Stok Opname', href: 'stok-opname.html', moduleKey: 'STOK_OPNAME', permission: ['stokOpname'], tone: 'blue', desc: 'Koreksi stok fisik.' },
+      { module: 'Inventori', group: 'Inventori / Stok Gudang', label: 'Lihat Stok', href: 'lihat-stok.html', moduleKey: 'LIHAT_STOK', permission: ['lihatStok'], tone: 'slate', desc: 'Monitoring STOK_AKHIR.' },
+      { module: 'Inventori', group: 'Inventori / Setup & Audit', label: 'Setup Inventory', href: 'setup-inventory.html', moduleKey: 'SETUP_INVENTORY', permission: ['setupInventory', 'admin'], tone: 'violet', desc: 'Master kategori, item, produk, dan resep.', admin: true },
+      { module: 'Inventori', group: 'Inventori / Setup & Audit', label: 'Jurnal Stok / Audit', href: 'riwayat-inventory.html', moduleKey: 'JURNAL_STOK_AUDIT', permission: ['jurnalStokAudit', 'riwayatTransaksi', 'riwayatInventory'], tone: 'blue', desc: 'Audit dari JURNAL_STOK.' },
+      { module: 'HR / Absensi', group: 'HR / Absensi / Dashboard', label: 'Dashboard Absensi', href: 'dashboard-absensi.html', moduleKey: 'DASHBOARD_ABSENSI', permission: ['dashboardAbsensi', 'absensiAdmin', 'absensiDiri'], tone: 'sky', desc: 'Kehadiran, belum absen, checkout, dan shift.' },
+      { module: 'HR / Absensi', group: 'HR / Absensi / Absensi', label: 'Check In / Check Out', href: 'absensi.html', moduleKey: 'CHECK_IN_OUT', permission: ['absensiCheck', 'absensiDiri'], tone: 'emerald', desc: 'Absensi mandiri karyawan.' },
+      { module: 'HR / Absensi', group: 'HR / Absensi / Absensi', label: 'Rekap Absensi', href: 'rekap-absensi.html', moduleKey: 'REKAP_ABSENSI', permission: ['rekapAbsensi', 'absensiAdmin'], tone: 'blue', desc: 'Rekap hadir, terlambat, dan belum checkout.' },
+      { module: 'HR / Absensi', group: 'HR / Absensi / Karyawan', label: 'Data Karyawan', href: 'hr-karyawan.html', moduleKey: 'DATA_KARYAWAN', permission: ['dataKaryawan', 'absensiAdmin'], tone: 'slate', desc: 'Data karyawan, shift, jadwal, dan akses outlet.' },
+      { module: 'Keuangan', group: 'Keuangan / Dashboard', label: 'Dashboard Keuangan', href: 'dashboard-keuangan.html', moduleKey: 'DASHBOARD_KEUANGAN', permission: ['dashboardKeuangan', 'keuangan'], tone: 'emerald', desc: 'Ringkasan kas, bank, biaya, dan laporan.', comingSoon: true },
+      { module: 'Keuangan', group: 'Keuangan / Kas & Laporan', label: 'Input Kas / Bank', href: 'input-kas-bank.html', moduleKey: 'INPUT_KAS_BANK', permission: ['inputKasBank', 'keuangan'], tone: 'emerald', desc: 'Input kas dan bank harian.', comingSoon: true }
+    ],
+    tabs: {
+      karyawan: 'dataKaryawan',
+      shift: 'shiftKerja',
+      jadwal: 'jadwalKaryawan',
+      akses: 'aksesOutlet',
+      'rekap-outlet': 'rekapHarianOutlet',
+      'kas-masuk': 'kasMasuk',
+      'kas-keluar': 'kasKeluar',
+      transfer: 'transferKasBank',
+      kasbon: 'kasbonKaryawan',
+      kategori: 'kategoriTransaksi',
+      laporan: 'laporanKas'
+    },
+    aliases: {
+      dashboardUtama: ['dashboard'],
+      dashboardInventory: ['inventory'],
+      transferItem: ['transferProduksi', 'transferProduk'],
+      jurnalStokAudit: ['riwayatTransaksi', 'riwayatInventory'],
+      absensiCheck: ['absensiDiri'],
+      rekapAbsensi: ['absensiAdmin'],
+      dataKaryawan: ['hrKaryawan', 'absensiAdmin'],
+      dashboardAbsensi: ['absensiAdmin'],
+      dashboardKeuangan: ['keuangan'],
+      inputKasBank: ['keuangan'],
+      setupInventory: ['admin']
+    }
+  },
   actions: {
     core: {
       login: 'login',

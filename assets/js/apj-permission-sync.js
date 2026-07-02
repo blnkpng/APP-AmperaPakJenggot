@@ -13,7 +13,49 @@
   };
 
   var FULL_ACCESS_LEVELS = ['OWNER','SUPERADMIN','SUPER ADMIN'];
-  var PAGE_PERMISSION = {
+
+  function copyObject_(obj){
+    var out = {};
+    Object.keys(obj || {}).forEach(function(key){ out[key] = obj[key]; });
+    return out;
+  }
+  function asPermissionString_(value){
+    if (Array.isArray(value)) return value.join(',');
+    return String(value || '').trim();
+  }
+  function cleanRegistryUrl_(url){
+    var raw = String(url || '').split('#')[0].split('?')[0];
+    return raw.split('/').pop().toLowerCase();
+  }
+  function menuItems_(){
+    var rows = CFG.menu && Array.isArray(CFG.menu.items) ? CFG.menu.items : [];
+    return rows.filter(function(item){ return item && cleanRegistryUrl_(item.href || item.url); });
+  }
+  function buildPermissionMap_(fallback){
+    var map = copyObject_(fallback);
+    menuItems_().forEach(function(item){
+      var href = cleanRegistryUrl_(item.href || item.url);
+      var permission = asPermissionString_(item.permission || item.permissionKey);
+      if (href && permission) map[href] = permission;
+    });
+    return map;
+  }
+  function buildModuleKeyMap_(fallback){
+    var map = copyObject_(fallback);
+    menuItems_().forEach(function(item){
+      var href = cleanRegistryUrl_(item.href || item.url);
+      var moduleKey = String(item.moduleKey || item.MODULE_KEY || '').trim();
+      if (href && moduleKey) map[href] = moduleKey;
+    });
+    return map;
+  }
+  function mergeConfigObject_(fallback, configObject){
+    var map = copyObject_(fallback);
+    Object.keys(configObject || {}).forEach(function(key){ map[key] = configObject[key]; });
+    return map;
+  }
+
+  var PAGE_PERMISSION_FALLBACK = {
     'dashboard.html': 'dashboardUtama',
     'dashboard-inventory.html': 'dashboardInventory',
     'input-stok.html': 'inputStok',
@@ -33,29 +75,11 @@
     'dashboard-keuangan.html': 'dashboardKeuangan',
     'input-kas-bank.html': 'inputKasBank'
   };
+  var PAGE_PERMISSION = buildPermissionMap_(PAGE_PERMISSION_FALLBACK);
 
-  var URL_PERMISSION = {
-    'dashboard.html': 'dashboardUtama',
-    'dashboard-inventory.html': 'dashboardInventory',
-    'input-stok.html': 'inputStok',
-    'output-stok.html': 'outputStok',
-    'stok-opname.html': 'stokOpname',
-    'lihat-stok.html': 'lihatStok',
-    'preparasi.html': 'preparasi',
-    'produksi.html': 'produksi',
-    'transfer-produksi.html': 'transferItem',
-    'produk-outlet.html': 'produkOutlet',
-    'setup-inventory.html': 'setupInventory',
-    'riwayat-inventory.html': 'jurnalStokAudit',
-    'dashboard-absensi.html': 'dashboardAbsensi',
-    'absensi.html': 'absensiCheck',
-    'rekap-absensi.html': 'rekapAbsensi',
-    'hr-karyawan.html': 'dataKaryawan',
-    'dashboard-keuangan.html': 'dashboardKeuangan',
-    'input-kas-bank.html': 'inputKasBank'
-  };
+  var URL_PERMISSION = buildPermissionMap_(PAGE_PERMISSION_FALLBACK);
 
-  var MODULE_KEY_BY_URL = {
+  var MODULE_KEY_BY_URL_FALLBACK = {
     'dashboard.html': 'DASHBOARD_UTAMA',
     'dashboard-inventory.html': 'DASHBOARD_INVENTORY',
     'input-stok.html': 'INPUT_STOK',
@@ -75,8 +99,9 @@
     'dashboard-keuangan.html': 'DASHBOARD_KEUANGAN',
     'input-kas-bank.html': 'INPUT_KAS_BANK'
   };
+  var MODULE_KEY_BY_URL = buildModuleKeyMap_(MODULE_KEY_BY_URL_FALLBACK);
 
-  var TAB_PERMISSION = {
+  var TAB_PERMISSION_FALLBACK = {
     'karyawan': 'dataKaryawan',
     'shift': 'shiftKerja',
     'jadwal': 'jadwalKaryawan',
@@ -89,8 +114,9 @@
     'kategori': 'kategoriTransaksi',
     'laporan': 'laporanKas'
   };
+  var TAB_PERMISSION = mergeConfigObject_(TAB_PERMISSION_FALLBACK, CFG.menu && CFG.menu.tabs);
 
-  var ALIASES = {
+  var ALIASES_FALLBACK = {
     dashboardUtama: ['dashboard'],
     dashboardInventory: ['inventory'],
     transferItem: ['transferProduksi','transferProduk'],
@@ -110,6 +136,7 @@
     laporanKas: ['keuangan'],
     setupInventory: ['admin']
   };
+  var ALIASES = mergeConfigObject_(ALIASES_FALLBACK, CFG.menu && CFG.menu.aliases);
 
   function safeJson(value, fallback){ try { return value ? JSON.parse(value) : fallback; } catch(e){ return fallback; } }
   function escapeHtml(value){ return String(value == null ? '' : value).replace(/[&<>'"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]; }); }
@@ -156,13 +183,34 @@
     var raw = String(url || '').split('#')[0].split('?')[0];
     return raw.split('/').pop().toLowerCase();
   }
+  function linkText_(link){
+    var label = link && (link.querySelector('.nav-text') || link.querySelector('.apj-nav-text'));
+    return (label ? label.textContent : (link && link.textContent) || '').trim().toLowerCase();
+  }
+  function findRegistryItemForLink(link){
+    if (!link) return null;
+    var mk = String(link.getAttribute('data-module-key') || '').trim().toUpperCase();
+    var href = cleanUrl(link.getAttribute('data-original-href') || link.getAttribute('href') || '');
+    var text = linkText_(link);
+    var rows = menuItems_();
+    for (var i=0; i<rows.length; i++) {
+      var item = rows[i] || {};
+      var itemKey = String(item.moduleKey || item.MODULE_KEY || '').trim().toUpperCase();
+      var itemUrl = cleanUrl(item.href || item.url || item.URL || '');
+      var itemLabel = String(item.label || item.MODULE_NAME || '').trim().toLowerCase();
+      if (mk && itemKey && mk === itemKey) return item;
+      if (href && href !== '#' && itemUrl && href === itemUrl) return item;
+      if (!href && text && itemLabel && text === itemLabel) return item;
+    }
+    return null;
+  }
   function getModuleValue(m, upper, camel){ if (!m) return ''; return m[camel] || m[upper] || ''; }
   function findModuleForLink(link){
     var modules = getModules();
     if (!modules.length) return null;
     var mk = (link.getAttribute('data-module-key') || '').toUpperCase();
     var href = cleanUrl(link.getAttribute('data-original-href') || link.getAttribute('href'));
-    var text = (link.querySelector('.nav-text') ? link.querySelector('.nav-text').textContent : link.textContent || '').trim().toLowerCase();
+    var text = linkText_(link);
     for (var i=0; i<modules.length; i++) {
       var m = modules[i] || {};
       var modKey = String(getModuleValue(m, 'MODULE_KEY', 'moduleKey') || '').toUpperCase();
@@ -423,12 +471,19 @@
       if (!link.dataset.originalHref) link.dataset.originalHref = href;
       var inferredPermission = inferLinkPermission(link);
       var inferredModuleKey = inferModuleKey(link);
+      var registryItem = findRegistryItemForLink(link);
+      var registryPermission = registryItem ? asPermissionString_(registryItem.permission || registryItem.permissionKey) : '';
+      var registryModuleKey = registryItem ? String(registryItem.moduleKey || registryItem.MODULE_KEY || '').trim() : '';
       if (inferredPermission && !link.getAttribute('data-permission')) link.setAttribute('data-permission', inferredPermission);
       if (inferredModuleKey && !link.getAttribute('data-module-key')) link.setAttribute('data-module-key', inferredModuleKey);
+      if (registryModuleKey && !link.getAttribute('data-module-key')) link.setAttribute('data-module-key', registryModuleKey);
       var mod = findModuleForLink(link);
       var status = moduleStatus(mod);
-      var permission = modulePermission(mod) || inferredPermission;
+      var permission = modulePermission(mod) || registryPermission || inferredPermission;
       if (permission) link.setAttribute('data-permission', permission);
+      if (registryItem && (registryItem.href || registryItem.url) && !registryItem.comingSoon && !registryItem.maintenance && !registryItem.repair && !mod) {
+        link.dataset.originalHref = registryItem.href || registryItem.url;
+      }
       if (mod && getModuleValue(mod, 'URL', 'url') && !isComingSoonStatus(status) && !isRepairStatus(status)) {
         var modUrl = getModuleValue(mod, 'URL', 'url');
         if (modUrl) {
@@ -439,6 +494,8 @@
       }
       if (mod && isRepairStatus(status)) { setRepairLink(link); return; }
       if (mod && isComingSoonStatus(status)) { setComingSoonLink(link); return; }
+      if (registryItem && (registryItem.maintenance || registryItem.repair)) { setRepairLink(link); return; }
+      if (registryItem && registryItem.comingSoon) { setComingSoonLink(link); return; }
       if (link.getAttribute('data-repair-menu')) { setRepairLink(link); return; }
       if (link.getAttribute('data-coming-soon-menu')) { setComingSoonLink(link); return; }
       if (!hasAny(permission) || !moduleAllowed(mod)) { setLockedLink(link, permission); return; }
@@ -517,6 +574,10 @@
     syncTabs: syncTabs,
     showNotice: showNotice,
     closeNotice: closeNotice,
-    aliases: ALIASES
+    aliases: ALIASES,
+    menuItems: menuItems_,
+    pagePermissions: PAGE_PERMISSION,
+    urlPermissions: URL_PERMISSION,
+    moduleKeysByUrl: MODULE_KEY_BY_URL
   };
 })();

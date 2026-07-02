@@ -45,9 +45,56 @@
     return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="' + (map[n] || map.dashboard) + '"/></svg>';
   }
 
+  function moduleIcon(item) {
+    const key = String((item && item.moduleKey) || '').toLowerCase();
+    if (key.indexOf('input') >= 0) return 'input';
+    if (key.indexOf('output') >= 0) return 'output';
+    if (key.indexOf('transfer') >= 0) return 'transfer';
+    if (key.indexOf('outlet') >= 0) return 'outlet';
+    if (key.indexOf('opname') >= 0) return 'opname';
+    if (key.indexOf('riwayat') >= 0 || key.indexOf('jurnal') >= 0) return 'history';
+    if (key.indexOf('absensi') >= 0 || key.indexOf('karyawan') >= 0) return 'attendance';
+    if (key.indexOf('keuangan') >= 0 || key.indexOf('kas') >= 0) return 'money';
+    if (key.indexOf('setup') >= 0) return 'settings';
+    if (key.indexOf('stok') >= 0) return 'stock';
+    return 'dashboard';
+  }
+
+  function parentMenu(item) {
+    const moduleName = String((item && item.module) || '').toLowerCase();
+    if (moduleName.indexOf('central') >= 0) return 'ROOT';
+    if (moduleName.indexOf('invent') >= 0) return 'Inventory';
+    if (moduleName.indexOf('absensi') >= 0 || moduleName.indexOf('hr') >= 0) return 'Absensi';
+    if (moduleName.indexOf('keuangan') >= 0) return 'Keuangan';
+    return item && item.module ? item.module : 'ROOT';
+  }
+
+  function modulesFromConfigMenu() {
+    const rows = cfg().menu && Array.isArray(cfg().menu.items) ? cfg().menu.items : [];
+    return rows.map(function (item, index) {
+      const permission = Array.isArray(item.permission) ? item.permission.join(',') : (item.permission || '');
+      return {
+        MODULE_ID: 'CFG-' + String(index + 1).padStart(3, '0'),
+        APP_GROUP: item.module || '',
+        MODULE_KEY: item.moduleKey || '',
+        MODULE_NAME: item.label || '',
+        PARENT_MENU: parentMenu(item),
+        URL: item.comingSoon ? '' : (item.href || item.url || ''),
+        PERMISSION_KEY: permission,
+        MENU_ORDER: Number(item.order || ((index + 1) * 10)),
+        IS_MENU: 'Y',
+        STATUS: item.comingSoon ? 'SEGERA' : 'AKTIF',
+        ICON: item.icon || moduleIcon(item)
+      };
+    }).filter(function (item) {
+      return item.MODULE_NAME && (item.URL || item.STATUS === 'SEGERA');
+    });
+  }
+
   function getModules() {
     const stored = safeJson(localStorage.getItem(storageKey()), []);
-    const modules = Array.isArray(stored) && stored.length ? stored : FALLBACK_MODULES;
+    const configModules = modulesFromConfigMenu();
+    const modules = Array.isArray(stored) && stored.length ? stored : (configModules.length ? configModules : FALLBACK_MODULES);
     return modules.map(function (m) {
       return {
         moduleId: m.MODULE_ID || m.moduleId || '',
@@ -62,7 +109,7 @@
         status: m.STATUS || m.status || 'AKTIF',
         icon: m.ICON || m.icon || 'dashboard'
       };
-    }).filter(function (m) { return isY(m.isMenu) && isAktif(m.status); }).sort(sortByOrder);
+    }).filter(function (m) { return isY(m.isMenu) && (isAktif(m.status) || String(m.status || '').toUpperCase() === 'SEGERA'); }).sort(sortByOrder);
   }
 
   function getOpenGroups() {
@@ -96,7 +143,7 @@
     Object.keys(grouped).forEach(function (name) {
       if (grouped[name].some(function (m) { return String(m.url || '').toLowerCase() === active; })) openGroups[name] = true;
     });
-    const groupOrder = ['Inventory','Absensi','Keuangan','Admin Setup'];
+    const groupOrder = ['Inventory','Inventori','Absensi','HR / Absensi','Keuangan','Admin Setup'];
     const groups = Object.keys(grouped).sort(function (a,b) {
       const ai = groupOrder.indexOf(a), bi = groupOrder.indexOf(b);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
